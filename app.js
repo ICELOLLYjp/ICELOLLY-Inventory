@@ -287,6 +287,35 @@ function renderSummary() {
   $("#soldOut").textContent = out;
 }
 
+
+function allowedColorsForBody(bodyId) {
+  const body = byId(state.bodies, bodyId);
+  if (!body) return state.colors;
+
+  const allowedNames = BODY_COLOR_RULES[body.internalName];
+  if (!allowedNames) return state.colors;
+
+  const allowed = new Set(allowedNames);
+  return state.colors.filter(c => allowed.has(c.internalName));
+}
+
+function renderVariantColorOptions(selectedColorId = "") {
+  const bodyId = $("#variantBody").value;
+  const colors = allowedColorsForBody(bodyId);
+
+  $("#variantColor").innerHTML =
+    `<option value="">Select color</option>` +
+    colors.map(c =>
+      `<option value="${esc(c.id)}">${esc(c.internalName)}</option>`
+    ).join("");
+
+  if (selectedColorId && colors.some(c => c.id === selectedColorId)) {
+    $("#variantColor").value = selectedColorId;
+  } else if (colors[0]) {
+    $("#variantColor").value = colors[0].id;
+  }
+}
+
 function renderFilters() {
   const current = $("#bodyFilter").value;
   $("#bodyFilter").innerHTML = `<option value="">All Bodies</option>` +
@@ -296,9 +325,17 @@ function renderFilters() {
   const options = (list, label) => `<option value="">${label}</option>` + list.map(x =>
     `<option value="${esc(x.id)}">${esc(x.internalName)}</option>`).join("");
 
+  const currentVariantBody = $("#variantBody").value;
+  const currentVariantColor = $("#variantColor").value;
+
   $("#variantBody").innerHTML = options(state.bodies, "Select body");
   $("#variantDesign").innerHTML = options(state.designs, "Select design");
-  $("#variantColor").innerHTML = options(state.colors, "Select color");
+
+  if (currentVariantBody && state.bodies.some(b => b.id === currentVariantBody)) {
+    $("#variantBody").value = currentVariantBody;
+  }
+
+  renderVariantColorOptions(currentVariantColor);
 }
 
 function filteredInventory() {
@@ -424,7 +461,7 @@ function openVariant(id=null) {
   $("#variantId").value = v?.id || "";
   $("#variantBody").value = v?.bodyId || state.bodies[0]?.id || "";
   $("#variantDesign").value = v?.designId || state.designs[0]?.id || "";
-  $("#variantColor").value = v?.colorId || state.colors[0]?.id || "";
+  renderVariantColorOptions(v?.colorId || "");
   $("#variantSize").value = v?.size || "M";
   $("#variantSku").value = v?.sku || "";
   $("#variantStock").value = v?.stock ?? 0;
@@ -572,6 +609,7 @@ function bindEvents() {
   $("#searchInput").addEventListener("input", renderInventory);
   $("#bodyFilter").addEventListener("change", renderInventory);
   $("#sortSelect").addEventListener("change", renderInventory);
+  $("#variantBody").addEventListener("change", () => renderVariantColorOptions());
   $("#addVariantBtn").addEventListener("click", () => openVariant());
   $("#variantForm").addEventListener("submit", submitVariant);
   $("#masterForm").addEventListener("submit", submitMaster);
