@@ -288,6 +288,34 @@ function renderSummary() {
 }
 
 
+
+function allowedDesignsForBody(bodyId) {
+  const body = byId(state.bodies, bodyId);
+  if (!body) return state.designs;
+
+  return state.designs.filter(d => {
+    if (!Array.isArray(d.allowedBodyNames) || d.allowedBodyNames.length === 0) return true;
+    return d.allowedBodyNames.includes(body.internalName);
+  });
+}
+
+function renderVariantDesignOptions(selectedDesignId = "") {
+  const bodyId = $("#variantBody").value;
+  const designs = allowedDesignsForBody(bodyId);
+
+  $("#variantDesign").innerHTML =
+    `<option value="">Select design</option>` +
+    designs.map(d =>
+      `<option value="${esc(d.id)}">${esc(d.internalName)}</option>`
+    ).join("");
+
+  if (selectedDesignId && designs.some(d => d.id === selectedDesignId)) {
+    $("#variantDesign").value = selectedDesignId;
+  } else if (designs[0]) {
+    $("#variantDesign").value = designs[0].id;
+  }
+}
+
 function allowedColorsForBody(bodyId) {
   const body = byId(state.bodies, bodyId);
   if (!body) return state.colors;
@@ -329,12 +357,12 @@ function renderFilters() {
   const currentVariantColor = $("#variantColor").value;
 
   $("#variantBody").innerHTML = options(state.bodies, "Select body");
-  $("#variantDesign").innerHTML = options(state.designs, "Select design");
 
   if (currentVariantBody && state.bodies.some(b => b.id === currentVariantBody)) {
     $("#variantBody").value = currentVariantBody;
   }
 
+  renderVariantDesignOptions();
   renderVariantColorOptions(currentVariantColor);
 }
 
@@ -406,6 +434,9 @@ function renderMasters() {
         <div>
           <strong>${esc(x.internalName)} ${x.code ? `<small>${esc(x.code)}</small>` : ""}</strong>
           <small>${esc(displayName(x,"en"))}</small>
+          ${type === "design" && Array.isArray(x.allowedBodyNames) && x.allowedBodyNames.length
+            ? `<small>${esc(x.allowedBodyNames.join(" / "))}</small>`
+            : ""}
         </div>
         <div>
           <button class="link-button" data-edit-master="${type}" data-id="${esc(x.id)}">編集</button>
@@ -460,7 +491,7 @@ function openVariant(id=null) {
   $("#variantDialogTitle").textContent = v ? "在庫を編集" : "在庫を追加";
   $("#variantId").value = v?.id || "";
   $("#variantBody").value = v?.bodyId || state.bodies[0]?.id || "";
-  $("#variantDesign").value = v?.designId || state.designs[0]?.id || "";
+  renderVariantDesignOptions(v?.designId || "");
   renderVariantColorOptions(v?.colorId || "");
   $("#variantSize").value = v?.size || "M";
   $("#variantSku").value = v?.sku || "";
@@ -501,6 +532,21 @@ function openMaster(type, id=null) {
   $("#masterJa").value = item?.displayName?.ja || "";
   $("#masterEn").value = item?.displayName?.en || "";
   $("#masterZh").value = item?.displayName?.zhTW || "";
+
+  const designBodiesField = $("#designBodiesField");
+  const checks = $$(".design-body-check");
+  designBodiesField.classList.toggle("hidden", type !== "design");
+
+  if (type === "design") {
+    const selected = Array.isArray(item?.allowedBodyNames) && item.allowedBodyNames.length
+      ? new Set(item.allowedBodyNames)
+      : new Set(["Organic", "Vintage", "MIJ"]);
+
+    checks.forEach(ch => {
+      ch.checked = selected.has(ch.value);
+    });
+  }
+
   $("#masterDialogTitle").textContent = `${type[0].toUpperCase()+type.slice(1)} Master`;
   $("#masterDialog").showModal();
 }
@@ -520,6 +566,12 @@ async function submitMaster(e) {
     },
     updatedAt: new Date().toISOString()
   };
+
+  if (type === "design") {
+    item.allowedBodyNames = $$(".design-body-check")
+      .filter(ch => ch.checked)
+      .map(ch => ch.value);
+  }
   await saveCollectionItem(collectionName, item);
   $("#masterDialog").close();
   showToast("保存しました");
@@ -609,7 +661,10 @@ function bindEvents() {
   $("#searchInput").addEventListener("input", renderInventory);
   $("#bodyFilter").addEventListener("change", renderInventory);
   $("#sortSelect").addEventListener("change", renderInventory);
-  $("#variantBody").addEventListener("change", () => renderVariantColorOptions());
+  $("#variantBody").addEventListener("change", () => {
+    renderVariantDesignOptions();
+    renderVariantColorOptions();
+  });
   $("#addVariantBtn").addEventListener("click", () => openVariant());
   $("#variantForm").addEventListener("submit", submitVariant);
   $("#masterForm").addEventListener("submit", submitMaster);
