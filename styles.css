@@ -382,3 +382,11 @@ textarea {
     width: 100%;
   }
 }
+
+/* Product bulk inventory editor */
+.product-inventory-matrix { min-width: 760px; }
+.product-inventory-matrix th, .product-inventory-matrix td { text-align: center; }
+.product-inventory-matrix .color-cell { text-align: left; font-weight: 700; min-width: 150px; }
+.dual-stock-input { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; min-width: 112px; }
+.dual-stock-input input { min-width: 0; text-align: center; padding: 6px 4px; }
+.pinkoi-card-actions { gap: 8px; flex-wrap: wrap; }

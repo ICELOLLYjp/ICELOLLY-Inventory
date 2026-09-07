@@ -108,6 +108,32 @@ const ICELOLLY_DEFAULTS = {
   ]
 };
 
+
+const DEFAULT_PINKOI_COPY = {
+  highlightJa: "ICELOLLYのオリジナルイラストをプリントしたTシャツです。日常でも旅先でも着やすいデザインで、シンプルなコーディネートのアクセントになります。",
+  descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
+
+一枚でも着やすく、パンツやスカートなどさまざまなスタイルに合わせやすいアイテムです。
+
+デザインごとに使用しているTシャツのボディやカラーが異なります。サイズや素材については商品情報をご確認ください。`,
+  highlightEn: "An original ICELOLLY T shirt with our illustration. Easy to wear every day and also great for travel.",
+  descriptionEn: `This T shirt features an original illustration by ICELOLLY.
+
+Our designs are inspired by the ocean, nature, travel, and everyday moments.
+
+It is easy to wear on its own and simple to match with many styles.
+
+The T shirt body, color, and material may be different depending on the design. Please check the product details for size and material information.`,
+  highlightZh: "印有 ICELOLLY 原創插畫的 T 恤。適合日常穿著，也很適合旅行時搭配。",
+  descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計。
+
+我們的作品主要從海洋、自然、旅行與日常生活中獲得靈感。
+
+單穿也很好搭配，可以輕鬆搭配不同風格的服裝。
+
+不同設計所使用的 T 恤版型、顏色與材質可能有所不同。尺寸與材質資訊請確認商品頁面的詳細說明。`
+};
+
 const BODY_COLOR_RULES = {
   Organic: ["Natural", "Black", "Green", "Light Purple", "Pink", "Beige Grey"],
   Vintage: ["Vintage Black", "Vintage Navy", "Vintage Light Grey", "Vintage Purple"],
@@ -621,6 +647,97 @@ function updateShippingLeadTimeUi(orderType, preserveValue = true) {
   }
 }
 
+function openProductInventoryDialog(bodyId, designId) {
+  const body = byId(state.bodies, bodyId);
+  const design = byId(state.designs, designId);
+  const colors = allowedColorsForBody(bodyId);
+  const sizes = APP_CONFIG.sizes || ["S", "M", "L", "XL", "XXL"];
+
+  $("#productInventoryBodyId").value = bodyId;
+  $("#productInventoryDesignId").value = designId;
+  $("#productInventoryLabel").textContent =
+    `${design?.internalName || "?"} / ${body?.internalName || "?"}`;
+
+  $("#productInventoryHead").innerHTML = `
+    <tr>
+      <th>Color</th>
+      ${sizes.map(size => `<th class="size-head">${esc(size)}</th>`).join("")}
+    </tr>
+  `;
+
+  $("#productInventoryRows").innerHTML = colors.map(color => {
+    const cells = sizes.map(size => {
+      const existing = state.inventory.find(v =>
+        v.bodyId === bodyId &&
+        v.designId === designId &&
+        v.colorId === color.id &&
+        String(v.size || "").toUpperCase() === String(size).toUpperCase()
+      );
+
+      return `
+        <td class="product-stock-cell" data-color-id="${esc(color.id)}" data-size="${esc(size)}">
+          <div class="dual-stock-input">
+            <input type="number" min="0" value="${Number(existing?.stock || 0)}" data-product-stock title="実在庫">
+            <input type="number" min="0" value="${Number(existing?.pinkoiStock || 0)}" data-product-pinkoi-stock title="Pinkoi掲載在庫">
+          </div>
+        </td>
+      `;
+    }).join("");
+
+    return `<tr><td class="color-cell">${esc(color.internalName)}</td>${cells}</tr>`;
+  }).join("");
+
+  $("#productInventoryDialog").showModal();
+}
+
+async function submitProductInventory(e) {
+  e.preventDefault();
+
+  const bodyId = $("#productInventoryBodyId").value;
+  const designId = $("#productInventoryDesignId").value;
+  const body = byId(state.bodies, bodyId);
+  const design = byId(state.designs, designId);
+  let saved = 0;
+
+  for (const cell of $$("#productInventoryRows .product-stock-cell")) {
+    const colorId = cell.dataset.colorId;
+    const size = cell.dataset.size;
+    const stock = Number(cell.querySelector("[data-product-stock]").value || 0);
+    const pinkoiStock = Number(cell.querySelector("[data-product-pinkoi-stock]").value || 0);
+
+    const existing = state.inventory.find(v =>
+      v.bodyId === bodyId &&
+      v.designId === designId &&
+      v.colorId === colorId &&
+      String(v.size || "").toUpperCase() === String(size).toUpperCase()
+    );
+
+    if (!existing && stock === 0 && pinkoiStock === 0) continue;
+
+    const color = byId(state.colors, colorId);
+    const sku = existing?.sku ||
+      `TS_${cleanSkuPart(body?.code || body?.internalName)}_${cleanSkuPart(design?.code || design?.internalName)}_${cleanSkuPart(color?.code || color?.internalName)}_${cleanSkuPart(size)}`;
+
+    await saveCollectionItem("inventory", {
+      id: existing?.id || slug(),
+      bodyId,
+      designId,
+      colorId,
+      size,
+      sku,
+      stock,
+      pinkoiStock,
+      priceJpy: existing?.priceJpy ?? 0,
+      pinkoiProductId: existing?.pinkoiProductId || "",
+      updatedAt: new Date().toISOString()
+    });
+    saved++;
+  }
+
+  $("#productInventoryDialog").close();
+  showToast(`${saved}件の在庫を保存しました`);
+}
+
 function openPinkoiProduct(bodyId, designId) {
   const body = byId(state.bodies, bodyId);
   const design = byId(state.designs, designId);
@@ -661,7 +778,9 @@ function openPinkoiProduct(bodyId, designId) {
       ? "JP 日本"
       : savedOrigin;
 
-  const orderType = product?.orderType === "general" ? "general" : "madeToOrder";
+  const orderType = product
+    ? (product.orderType === "madeToOrder" ? "madeToOrder" : "general")
+    : "general";
   $("#pinkoiOrderType").value = orderType;
   $("#pinkoiShipDays").value = product?.shipDays ?? (orderType === "general" ? 3 : 14);
   updateShippingLeadTimeUi(orderType, true);
@@ -673,12 +792,12 @@ function openPinkoiProduct(bodyId, designId) {
   $("#pinkoiImageUrls").value = product?.imageUrls || "";
   $("#pinkoiTags").value = product?.tags || "Tシャツ";
 
-  $("#pinkoiHighlightJa").value = product?.highlightJa || "";
-  $("#pinkoiDescriptionJa").value = product?.descriptionJa || "";
-  $("#pinkoiHighlightEn").value = product?.highlightEn || "";
-  $("#pinkoiDescriptionEn").value = product?.descriptionEn || "";
-  $("#pinkoiHighlightZh").value = product?.highlightZh || "";
-  $("#pinkoiDescriptionZh").value = product?.descriptionZh || "";
+  $("#pinkoiHighlightJa").value = product?.highlightJa || DEFAULT_PINKOI_COPY.highlightJa;
+  $("#pinkoiDescriptionJa").value = product?.descriptionJa || DEFAULT_PINKOI_COPY.descriptionJa;
+  $("#pinkoiHighlightEn").value = product?.highlightEn || DEFAULT_PINKOI_COPY.highlightEn;
+  $("#pinkoiDescriptionEn").value = product?.descriptionEn || DEFAULT_PINKOI_COPY.descriptionEn;
+  $("#pinkoiHighlightZh").value = product?.highlightZh || DEFAULT_PINKOI_COPY.highlightZh;
+  $("#pinkoiDescriptionZh").value = product?.descriptionZh || DEFAULT_PINKOI_COPY.descriptionZh;
 
   $("#pinkoiProductStatus").value = product?.status || "draft";
   $("#pinkoiProductNote").value = product?.note || "";
@@ -715,7 +834,7 @@ async function submitPinkoiProduct(e) {
       if (value === "日本" || value.toLowerCase() === "japan") return "JP 日本";
       return value;
     })(),
-    orderType: $("#pinkoiOrderType").value === "general" ? "general" : "madeToOrder",
+    orderType: $("#pinkoiOrderType").value === "madeToOrder" ? "madeToOrder" : "general",
     shipDays: $("#pinkoiShipDays").value === "" ? null : Number($("#pinkoiShipDays").value),
     material: $("#pinkoiMaterial").value.trim(),
     target: $("#pinkoiTarget").value,
@@ -906,7 +1025,7 @@ function renderPinkoi() {
         <div class="pinkoi-meta">
           <span>ID: ${esc(productId)}</span>
           <span>JPY ${Number(price || 0).toLocaleString()}</span>
-          <span>${product?.orderType === "general" ? "一般注文" : "受注制作"} ${Number(product?.shipDays ?? (product?.orderType === "general" ? 3 : 14))}日</span>
+          <span>${product?.orderType === "madeToOrder" ? "受注制作" : "一般注文"} ${Number(product?.shipDays ?? (product?.orderType === "madeToOrder" ? 14 : 3))}日</span>
         </div>
 
         <div class="pinkoi-color-list">
@@ -914,6 +1033,12 @@ function renderPinkoi() {
         </div>
 
         <div class="pinkoi-card-actions">
+          <button class="button secondary small"
+                  data-edit-product-inventory
+                  data-body-id="${esc(group.bodyId)}"
+                  data-design-id="${esc(group.designId)}">
+            在庫を一括編集
+          </button>
           <button class="button secondary small"
                   data-edit-pinkoi-product
                   data-body-id="${esc(group.bodyId)}"
@@ -992,7 +1117,7 @@ function validatePinkoiExport(groups) {
     if (!["男性へ", "女性へ", "ユニセックス"].includes(product.target)) {
       problems.push(`${label}: ターゲットを選択してください。`);
     }
-    const orderType = product.orderType === "general" ? "general" : "madeToOrder";
+    const orderType = product.orderType === "madeToOrder" ? "madeToOrder" : "general";
     const shipDays = Number(product.shipDays);
 
     if (orderType === "general") {
@@ -1154,7 +1279,7 @@ async function exportPinkoiXlsx() {
           // Pinkoi template
           // I = 一般注文 発送までの日数
           // J = 受注制作 発送までの日数
-          const orderType = product.orderType === "general" ? "general" : "madeToOrder";
+          const orderType = product.orderType === "madeToOrder" ? "madeToOrder" : "general";
 
           if (orderType === "general") {
             excelSetCell(ws, row, 9, Number(product.shipDays ?? 3));
@@ -1621,6 +1746,7 @@ function bindEvents() {
   $("#variantForm").addEventListener("submit", submitVariant);
   $("#bulkVariantForm").addEventListener("submit", submitBulkVariant);
   $("#pinkoiProductForm").addEventListener("submit", submitPinkoiProduct);
+  $("#productInventoryForm").addEventListener("submit", submitProductInventory);
 
   $("#pinkoiSearchInput")?.addEventListener("input", renderPinkoi);
   $("#pinkoiBodyFilter")?.addEventListener("change", renderPinkoi);
@@ -1679,6 +1805,14 @@ function bindEvents() {
 
     const editVariant = e.target.closest("[data-edit-variant]");
     if (editVariant) return openVariant(editVariant.dataset.editVariant);
+
+    const editInventory = e.target.closest("[data-edit-product-inventory]");
+    if (editInventory) {
+      return openProductInventoryDialog(
+        editInventory.dataset.bodyId,
+        editInventory.dataset.designId
+      );
+    }
 
     const editPinkoi = e.target.closest("[data-edit-pinkoi-product]");
     if (editPinkoi) {
