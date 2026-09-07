@@ -40,7 +40,7 @@
           <input id="searchInput" type="search" placeholder="商品、デザイン、カラー、SKUを検索">
           <select id="bodyFilter"><option value="">All Bodies</option></select>
           <select id="sortSelect">
-            <option value="body">Body / Design</option>
+            <option value="body">Design / Color</option>
             <option value="stockAsc">Stock Low</option>
             <option value="stockDesc">Stock High</option>
             <option value="diff">Pinkoi Update</option>
@@ -52,15 +52,13 @@
           <table>
             <thead>
               <tr>
-                <th>Body</th>
                 <th>Design</th>
                 <th>Color</th>
-                <th>Size</th>
-                <th>SKU</th>
-                <th>Stock</th>
-                <th>Pinkoi</th>
-                <th>Status</th>
-                <th></th>
+                <th class="size-head">S</th>
+                <th class="size-head">M</th>
+                <th class="size-head">L</th>
+                <th class="size-head">XL</th>
+                <th class="size-head">XXL</th>
               </tr>
             </thead>
             <tbody id="inventoryRows"></tbody>

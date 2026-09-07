@@ -120,3 +120,78 @@ dialog::backdrop { background: rgba(0,0,0,.32); }
 .bulk-size-table { min-width: 520px; }
 .bulk-size-table input { min-height: 36px; }
 .bulk-size-table td:first-child { font-weight: 700; width: 70px; }
+
+
+/* Inventory matrix */
+.size-head {
+  text-align: center;
+  min-width: 72px;
+}
+
+.body-section-row td {
+  padding: 12px 8px 7px;
+  background: #f1f1ed;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.design-cell {
+  font-weight: 700;
+  min-width: 190px;
+}
+
+.color-cell {
+  min-width: 145px;
+}
+
+.size-cell {
+  text-align: center;
+  padding: 6px;
+}
+
+.empty-size {
+  color: #bbb;
+}
+
+.size-stock-button {
+  width: 100%;
+  min-width: 58px;
+  min-height: 54px;
+  border: 1px solid #deded9;
+  border-radius: 10px;
+  background: #fafaf7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.size-stock-button:hover {
+  background: #f2f2ee;
+}
+
+.size-stock-button.needs-sync {
+  border-style: dashed;
+}
+
+.size-stock-number {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.size-pinkoi-number {
+  font-size: 10px;
+  color: #777;
+}
+
+@media (max-width: 700px) {
+  .design-cell { min-width: 145px; }
+  .color-cell { min-width: 110px; }
+  .size-head { min-width: 60px; }
+  .size-stock-button { min-width: 50px; }
+}

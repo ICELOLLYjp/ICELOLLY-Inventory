@@ -414,32 +414,96 @@ function filteredInventory() {
 }
 
 function renderInventory() {
-  $("#inventoryRows").innerHTML = filteredInventory().map(v => {
-    const b = byId(state.bodies, v.bodyId);
-    const d = byId(state.designs, v.designId);
-    const c = byId(state.colors, v.colorId);
-    const stock = Number(v.stock || 0);
-    const pinkoi = Number(v.pinkoiStock || 0);
-    const status = stock === 0 ? ["Sold out","status-out"] : stock !== pinkoi ? ["Update","status-warn"] : ["OK","status-ok"];
-    return `
-      <tr>
-        <td>${esc(b?.internalName || "?")}</td>
-        <td>${esc(d?.internalName || "?")}</td>
-        <td title="${esc(displayName(c,"en"))}">${esc(c?.code || c?.internalName || "?")}</td>
-        <td>${esc(v.size)}</td>
-        <td>${esc(v.sku || "")}</td>
-        <td>
-          <div class="stock-control">
-            <button data-stock="${esc(v.id)}" data-delta="-1">−</button>
-            <span class="stock-number">${stock}</span>
-            <button data-stock="${esc(v.id)}" data-delta="1">+</button>
-          </div>
+  const variants = filteredInventory();
+  const sizes = ["S", "M", "L", "XL", "XXL"];
+  const bodyFilter = $("#bodyFilter").value;
+
+  if (!variants.length) {
+    $("#inventoryRows").innerHTML =
+      `<tr><td colspan="7" class="muted">在庫データがありません</td></tr>`;
+    return;
+  }
+
+  const groups = new Map();
+
+  for (const v of variants) {
+    const key = `${v.bodyId}|${v.designId}|${v.colorId}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        bodyId: v.bodyId,
+        designId: v.designId,
+        colorId: v.colorId,
+        variants: new Map()
+      });
+    }
+    groups.get(key).variants.set(String(v.size || "").toUpperCase(), v);
+  }
+
+  const rows = [...groups.values()].sort((a, b) => {
+    const bodyA = byId(state.bodies, a.bodyId)?.internalName || "";
+    const bodyB = byId(state.bodies, b.bodyId)?.internalName || "";
+    const designA = byId(state.designs, a.designId)?.internalName || "";
+    const designB = byId(state.designs, b.designId)?.internalName || "";
+    const colorA = byId(state.colors, a.colorId)?.internalName || "";
+    const colorB = byId(state.colors, b.colorId)?.internalName || "";
+
+    return (
+      bodyA.localeCompare(bodyB) ||
+      designA.localeCompare(designB) ||
+      colorA.localeCompare(colorB)
+    );
+  });
+
+  let currentBodyId = null;
+  const html = [];
+
+  for (const row of rows) {
+    const body = byId(state.bodies, row.bodyId);
+    const design = byId(state.designs, row.designId);
+    const color = byId(state.colors, row.colorId);
+
+    if (!bodyFilter && row.bodyId !== currentBodyId) {
+      currentBodyId = row.bodyId;
+      html.push(`
+        <tr class="body-section-row">
+          <td colspan="7">${esc(body?.internalName || "Body")}</td>
+        </tr>
+      `);
+    }
+
+    const sizeCells = sizes.map(size => {
+      const v = row.variants.get(size);
+
+      if (!v) {
+        return `<td class="size-cell empty-size">—</td>`;
+      }
+
+      const stock = Number(v.stock || 0);
+      const pinkoi = Number(v.pinkoiStock || 0);
+      const different = stock !== pinkoi;
+
+      return `
+        <td class="size-cell">
+          <button class="size-stock-button ${different ? "needs-sync" : ""}"
+                  data-edit-variant="${esc(v.id)}"
+                  title="${esc(v.sku || "")}">
+            <span class="size-stock-number">${stock}</span>
+            <span class="size-pinkoi-number">P ${pinkoi}</span>
+          </button>
         </td>
-        <td>${pinkoi}</td>
-        <td class="${status[1]}">${status[0]}</td>
-        <td><button class="link-button" data-edit-variant="${esc(v.id)}">編集</button></td>
-      </tr>`;
-  }).join("") || `<tr><td colspan="9" class="muted">在庫データがありません</td></tr>`;
+      `;
+    }).join("");
+
+    html.push(`
+      <tr>
+        <td class="design-cell">${esc(design?.internalName || "?")}</td>
+        <td class="color-cell">${esc(color?.internalName || "?")}</td>
+        ${sizeCells}
+      </tr>
+    `);
+  }
+
+  $("#inventoryRows").innerHTML = html.join("");
 }
 
 function renderMasters() {
