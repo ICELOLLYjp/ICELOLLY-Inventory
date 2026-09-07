@@ -25,6 +25,94 @@ const seed = {
   ]
 };
 
+
+const ICELOLLY_DEFAULTS = {
+  bodies: [
+    { internalName: "Organic", code: "ORG", displayName: { ja: "オーガニックコットンTシャツ", en: "Organic Cotton T Shirt", zhTW: "有機棉 T恤" } },
+    { internalName: "Vintage", code: "VNT", displayName: { ja: "ヴィンテージ加工Tシャツ", en: "Vintage Washed T Shirt", zhTW: "復古水洗 T恤" } },
+    { internalName: "MIJ", code: "MIJ", displayName: { ja: "日本製Tシャツ", en: "Made in Japan T Shirt", zhTW: "日本製 T恤" } }
+  ],
+
+  designs: [
+    "Bigwave",
+    "SALTY",
+    "Squids Night",
+    "Cherry",
+    "Orca Banana",
+    "MONSTER BUILDING",
+    "Share the Pavement",
+    "Good Vibes",
+    "Space Odyssey RAY",
+    "Coral",
+    "Safe Surf",
+    "Woo Hoo",
+    "Sink",
+    "VACAY",
+    "DEEP",
+    "Gulls and Lemons",
+    "Encounters",
+    "This is SUMMER",
+    "See You in Water",
+    "Whole Ocean Dive Club",
+    "KYOTO",
+    "This is JAPAN"
+  ].map(name => {
+    const codeMap = {
+      "Bigwave": "BIGWAVE",
+      "SALTY": "SALTY",
+      "Squids Night": "SQUIDS_NIGHT",
+      "Cherry": "CHERRY",
+      "Orca Banana": "ORCA_BANANA",
+      "MONSTER BUILDING": "MONSTER_BUILDING",
+      "Share the Pavement": "SHARE_PAVEMENT",
+      "Good Vibes": "GOOD_VIBES",
+      "Space Odyssey RAY": "SPACE_RAY",
+      "Coral": "CORAL",
+      "Safe Surf": "SAFE_SURF",
+      "Woo Hoo": "WOO_HOO",
+      "Sink": "SINK",
+      "VACAY": "VACAY",
+      "DEEP": "DEEP",
+      "Gulls and Lemons": "GULLS_LEMONS",
+      "Encounters": "ENCOUNTERS",
+      "This is SUMMER": "THIS_SUMMER",
+      "See You in Water": "SEE_YOU_WATER",
+      "Whole Ocean Dive Club": "WODC",
+      "KYOTO": "KYOTO",
+      "This is JAPAN": "THIS_JAPAN"
+    };
+    return {
+      internalName: name,
+      code: codeMap[name],
+      displayName: { ja: name, en: name, zhTW: name }
+    };
+  }),
+
+  colors: [
+    { internalName: "Natural", code: "NAT", displayName: { ja: "Natural", en: "Natural", zhTW: "Natural" } },
+    { internalName: "Black", code: "BLK", displayName: { ja: "Black", en: "Black", zhTW: "Black" } },
+    { internalName: "Green", code: "GRN", displayName: { ja: "Green", en: "Green", zhTW: "Green" } },
+    { internalName: "Light Purple", code: "LPR", displayName: { ja: "Light Purple", en: "Light Purple", zhTW: "Light Purple" } },
+    { internalName: "Pink", code: "PNK", displayName: { ja: "Pink", en: "Pink", zhTW: "Pink" } },
+    { internalName: "Beige Grey", code: "BGR", displayName: { ja: "Beige Grey", en: "Beige Grey", zhTW: "Beige Grey" } },
+
+    { internalName: "Vintage Black", code: "VBLK", displayName: { ja: "Vintage Black", en: "Vintage Black", zhTW: "Vintage Black" } },
+    { internalName: "Vintage Navy", code: "VNVY", displayName: { ja: "Vintage Navy", en: "Vintage Navy", zhTW: "Vintage Navy" } },
+    { internalName: "Vintage Light Grey", code: "VLGR", displayName: { ja: "Vintage Light Grey", en: "Vintage Light Grey", zhTW: "Vintage Light Grey" } },
+    { internalName: "Vintage Purple", code: "VPUR", displayName: { ja: "Vintage Purple", en: "Vintage Purple", zhTW: "Vintage Purple" } },
+
+    { internalName: "Black JP", code: "JP_BLK", displayName: { ja: "Black", en: "Black", zhTW: "Black" } },
+    { internalName: "White JP", code: "JP_WHT", displayName: { ja: "White", en: "White", zhTW: "White" } },
+    { internalName: "Grey JP", code: "JP_GRY", displayName: { ja: "Grey", en: "Grey", zhTW: "Grey" } }
+  ]
+};
+
+const BODY_COLOR_RULES = {
+  Organic: ["Natural", "Black", "Green", "Light Purple", "Pink", "Beige Grey"],
+  Vintage: ["Vintage Black", "Vintage Navy", "Vintage Light Grey", "Vintage Purple"],
+  MIJ: ["Black JP", "White JP", "Grey JP"]
+};
+
 let state = {
   bodies: [],
   designs: [],
@@ -400,6 +488,78 @@ async function submitMaster(e) {
   showToast("保存しました");
 }
 
+
+function normalizeName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function stableMasterId(prefix, internalName) {
+  const cleaned = String(internalName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `${prefix}_${cleaned || slug()}`;
+}
+
+async function loadIcelollyDefaults() {
+  const confirmed = confirm(
+    "ICELOLLYのBodies、Designs、Colorsを一括登録します。\n同じ管理用名称がすでにある場合は重複登録しません。"
+  );
+  if (!confirmed) return;
+
+  const btn = $("#loadDefaultsBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "登録中...";
+  }
+
+  try {
+    const configs = [
+      ["bodies", ICELOLLY_DEFAULTS.bodies, "body"],
+      ["designs", ICELOLLY_DEFAULTS.designs, "design"],
+      ["colors", ICELOLLY_DEFAULTS.colors, "color"]
+    ];
+
+    let added = 0;
+    let skipped = 0;
+
+    for (const [collectionName, items, prefix] of configs) {
+      const existingNames = new Set(
+        state[collectionName].map(x => normalizeName(x.internalName))
+      );
+
+      for (const source of items) {
+        const key = normalizeName(source.internalName);
+        if (existingNames.has(key)) {
+          skipped++;
+          continue;
+        }
+
+        const item = {
+          ...source,
+          id: stableMasterId(prefix, source.internalName),
+          updatedAt: new Date().toISOString()
+        };
+
+        await saveCollectionItem(collectionName, item);
+        existingNames.add(key);
+        added++;
+      }
+    }
+
+    showToast(`初期データを登録しました 追加 ${added} / 既存 ${skipped}`);
+  } catch (err) {
+    console.error(err);
+    alert("初期データの登録に失敗しました。Google LoginとFirestore Rulesを確認してください。");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "ICELOLLY初期データを登録";
+    }
+  }
+}
+
 function bindEvents() {
   $$(".tab").forEach(btn => btn.addEventListener("click", () => {
     $$(".tab").forEach(x => x.classList.remove("active"));
@@ -417,6 +577,7 @@ function bindEvents() {
   $("#masterForm").addEventListener("submit", submitMaster);
   $("#loginBtn").addEventListener("click", login);
   $("#logoutBtn").addEventListener("click", logout);
+  $("#loadDefaultsBtn")?.addEventListener("click", loadIcelollyDefaults);
 
   document.addEventListener("click", async e => {
     const stockBtn = e.target.closest("[data-stock]");
