@@ -2,7 +2,7 @@ export const APP_CONFIG = {
   // Firebase設定が終わるまでは true のままで構いません。
   // true: localStorageを使うデモモード
   // false: Firebase Authentication + Firestore
-  demoMode: true,
+  demoMode: false,
 
   firebase: {
     apiKey: "REPLACE_ME",
