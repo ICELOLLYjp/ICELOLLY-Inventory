@@ -127,6 +127,7 @@ let state = {
 let firebaseApi = null;
 let unsubscribers = [];
 let XLSXLib = null;
+let selectedPinkoiProductKeys = new Set();
 
 // Firestore上ではPinkoi専用コレクションを使います。
 // 既存のTシャツ在庫と同じFirebaseプロジェクトを使ってもデータは混ざりません。
@@ -740,6 +741,55 @@ async function submitPinkoiProduct(e) {
   showToast("Pinkoi商品情報を保存しました");
 }
 
+
+function selectedPinkoiGroups() {
+  const groups = [];
+
+  for (const key of selectedPinkoiProductKeys) {
+    const product = state.pinkoiProducts.find(p => p.id === key);
+    if (!product) continue;
+
+    const variants = state.inventory.filter(v =>
+      v.bodyId === product.bodyId &&
+      v.designId === product.designId
+    );
+
+    if (!variants.length) continue;
+    groups.push({ product, variants });
+  }
+
+  return groups;
+}
+
+function updatePinkoiSelectionCount() {
+  const el = $("#pinkoiSelectedCount");
+  if (el) el.textContent = selectedPinkoiProductKeys.size;
+}
+
+function selectAllDraftProducts() {
+  selectedPinkoiProductKeys.clear();
+
+  state.pinkoiProducts.forEach(product => {
+    if ((product.status || "draft") !== "draft") return;
+
+    const hasVariants = state.inventory.some(v =>
+      v.bodyId === product.bodyId &&
+      v.designId === product.designId
+    );
+
+    if (hasVariants) selectedPinkoiProductKeys.add(product.id);
+  });
+
+  updatePinkoiSelectionCount();
+  renderPinkoi();
+}
+
+function clearPinkoiSelection() {
+  selectedPinkoiProductKeys.clear();
+  updatePinkoiSelectionCount();
+  renderPinkoi();
+}
+
 function renderPinkoi() {
   const q = ($("#pinkoiSearchInput")?.value || "").trim().toLowerCase();
   const bodyFilter = $("#pinkoiBodyFilter")?.value || "";
@@ -830,15 +880,27 @@ function renderPinkoi() {
     }).join("");
 
     return `
-      <article class="pinkoi-product-card">
+      <article class="pinkoi-product-card ${selectedPinkoiProductKeys.has(product?.id || pinkoiProductKey(group.bodyId, group.designId)) ? "selected" : ""}">
         <div class="pinkoi-card-head">
-          <div>
+          <label class="pinkoi-product-select">
+            <input
+              type="checkbox"
+              data-select-pinkoi-product
+              data-key="${esc(product?.id || pinkoiProductKey(group.bodyId, group.designId))}"
+              ${selectedPinkoiProductKeys.has(product?.id || pinkoiProductKey(group.bodyId, group.designId)) ? "checked" : ""}
+              ${!product ? "disabled" : ""}
+            >
+            <span>選択</span>
+          </label>
+
+          <div class="pinkoi-card-main">
             <div class="pinkoi-manage-name">
               ${esc(design?.internalName || "?")} / ${esc(body?.internalName || "?")}
             </div>
             <h3>${esc(title)}</h3>
           </div>
           <span class="pinkoi-status ${esc(status)}">${esc(pinkoiStatusLabel(status))}</span>
+        </div>
         </div>
 
         <div class="pinkoi-meta">
@@ -862,6 +924,8 @@ function renderPinkoi() {
       </article>
     `;
   }).join("") || `<div class="muted">Pinkoi商品がありません。</div>`;
+
+  updatePinkoiSelectionCount();
 }
 
 
@@ -1000,7 +1064,19 @@ function pinkoiVariantRows(product, variants) {
 
 async function exportPinkoiXlsx() {
   try {
-    const groups = getDraftPinkoiGroups();
+    const groups = selectedPinkoiGroups();
+
+    if (!groups.length) {
+      alert("XLSXに出力する商品を選択してください。");
+      return;
+    }
+
+    const nonDraft = groups.filter(({ product }) => (product.status || "draft") !== "draft");
+    if (nonDraft.length) {
+      alert("新規登録用XLSXにはDraftの商品だけを選択してください。");
+      return;
+    }
+
     const problems = validatePinkoiExport(groups);
 
     if (problems.length) {
@@ -1163,7 +1239,7 @@ async function exportPinkoiXlsx() {
     const btn = $("#exportPinkoiXlsxBtn");
     if (btn) {
       btn.disabled = false;
-      btn.textContent = "新規登録用XLSXを出力";
+      btn.textContent = "選択商品をXLSX出力";
     }
   }
 }
@@ -1550,6 +1626,8 @@ function bindEvents() {
   $("#pinkoiBodyFilter")?.addEventListener("change", renderPinkoi);
   $("#pinkoiStatusFilter")?.addEventListener("change", renderPinkoi);
   $("#exportPinkoiXlsxBtn")?.addEventListener("click", exportPinkoiXlsx);
+  $("#selectAllDraftBtn")?.addEventListener("click", selectAllDraftProducts);
+  $("#clearPinkoiSelectionBtn")?.addEventListener("click", clearPinkoiSelection);
 
   $("#pinkoiOrderType")?.addEventListener("change", e => {
     updateShippingLeadTimeUi(e.target.value, false);
@@ -1580,6 +1658,20 @@ function bindEvents() {
   $("#loginBtn").addEventListener("click", login);
   $("#logoutBtn").addEventListener("click", logout);
   $("#loadDefaultsBtn")?.addEventListener("click", loadIcelollyDefaults);
+
+  document.addEventListener("change", e => {
+    const checkbox = e.target.closest("[data-select-pinkoi-product]");
+    if (!checkbox) return;
+
+    const key = checkbox.dataset.key;
+    if (!key) return;
+
+    if (checkbox.checked) selectedPinkoiProductKeys.add(key);
+    else selectedPinkoiProductKeys.delete(key);
+
+    updatePinkoiSelectionCount();
+    checkbox.closest(".pinkoi-product-card")?.classList.toggle("selected", checkbox.checked);
+  });
 
   document.addEventListener("click", async e => {
     const stockBtn = e.target.closest("[data-stock]");

@@ -324,3 +324,61 @@ textarea {
   font: inherit;
   line-height: 1.5;
 }
+
+
+/* Pinkoi multiple selection */
+.pinkoi-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pinkoi-selection-summary {
+  margin: 4px 0 12px;
+  font-size: 13px;
+  color: #666;
+}
+
+.pinkoi-product-card.selected {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.pinkoi-product-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pinkoi-product-select input {
+  width: auto;
+  min-height: auto;
+}
+
+.pinkoi-card-main {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 700px) {
+  .pinkoi-export-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .pinkoi-export-actions .button {
+    flex: 1 1 auto;
+  }
+
+  .pinkoi-card-head {
+    flex-wrap: wrap;
+  }
+
+  .pinkoi-card-main {
+    order: 2;
+    width: 100%;
+  }
+}

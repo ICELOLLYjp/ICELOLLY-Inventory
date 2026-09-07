@@ -108,7 +108,11 @@
             <h2>Pinkoi Products</h2>
             <p class="muted">Body + DesignごとにPinkoiの商品情報を管理します。</p>
           </div>
-          <button id="exportPinkoiXlsxBtn" class="button">新規登録用XLSXを出力</button>
+          <div class="pinkoi-export-actions">
+            <button id="selectAllDraftBtn" class="button secondary">Draftをすべて選択</button>
+            <button id="clearPinkoiSelectionBtn" class="button secondary">選択解除</button>
+            <button id="exportPinkoiXlsxBtn" class="button">選択商品をXLSX出力</button>
+          </div>
         </div>
 
         <div class="toolbar pinkoi-toolbar">
@@ -120,6 +124,10 @@
             <option value="selling">Selling</option>
             <option value="hidden">Hidden</option>
           </select>
+        </div>
+
+        <div class="pinkoi-selection-summary">
+          選択中: <strong id="pinkoiSelectedCount">0</strong> 商品
         </div>
 
         <div id="pinkoiCards" class="pinkoi-grid"></div>
