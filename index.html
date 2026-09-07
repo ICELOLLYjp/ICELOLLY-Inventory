@@ -108,6 +108,7 @@
             <h2>Pinkoi Products</h2>
             <p class="muted">Body + DesignごとにPinkoiの商品情報を管理します。</p>
           </div>
+          <button id="exportPinkoiXlsxBtn" class="button">新規登録用XLSXを出力</button>
         </div>
 
         <div class="toolbar pinkoi-toolbar">
@@ -129,7 +130,7 @@
 
 
   <dialog id="pinkoiProductDialog">
-    <form method="dialog" id="pinkoiProductForm" class="dialog-form">
+    <form method="dialog" id="pinkoiProductForm" class="dialog-form wide-dialog">
       <div class="section-title">
         <h2>Pinkoi商品情報</h2>
         <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
@@ -144,22 +145,135 @@
         <span id="pinkoiAutoTitle" class="muted"></span>
       </div>
 
-      <label>
-        Pinkoi販売用商品名
-        <input id="pinkoiCustomTitle" placeholder="未入力なら自動生成名を使用">
-      </label>
+      <fieldset>
+        <legend>商品名</legend>
+        <label>
+          日本語
+          <input id="pinkoiTitleJa" placeholder="例：Bigwave オーガニックコットンTシャツ">
+        </label>
+        <label>
+          English
+          <input id="pinkoiTitleEn" placeholder="空欄ならPinkoiで自動翻訳">
+        </label>
+        <label>
+          繁體中文
+          <input id="pinkoiTitleZh" placeholder="空欄ならPinkoiで自動翻訳">
+        </label>
+      </fieldset>
 
       <div class="two-col">
         <label>
           Pinkoi商品ID
-          <input id="pinkoiProductId" placeholder="任意">
+          <input id="pinkoiProductId" placeholder="既存商品の場合のみ">
         </label>
 
         <label>
-          価格 TWD
-          <input id="pinkoiProductPrice" type="number" min="0" value="1200">
+          価格 JPY
+          <input id="pinkoiProductPrice" type="number" min="1" value="6380">
         </label>
       </div>
+
+      <div class="two-col">
+        <label>
+          商品カテゴリー
+          <input id="pinkoiCategory" value="ファッション > Tシャツ - 1">
+        </label>
+
+        <label>
+          制作方法
+          <select id="pinkoiProductionMethod">
+            <option value="工場生産">工場生産</option>
+            <option value="ハンドメイド">ハンドメイド</option>
+            <option value="その他">その他</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="two-col">
+        <label>
+          製造地
+          <input id="pinkoiOrigin" placeholder="例：JP 日本">
+        </label>
+
+        <label>
+          一般注文 発送までの日数
+          <input id="pinkoiShipDays" type="number" min="0" max="5" placeholder="0〜5">
+        </label>
+      </div>
+
+      <div class="two-col">
+        <label>
+          素材
+          <input id="pinkoiMaterial" value="コットン">
+        </label>
+
+        <label>
+          ターゲット
+          <select id="pinkoiTarget">
+            <option value="ユニセックス">ユニセックス</option>
+            <option value="女性へ">女性へ</option>
+            <option value="男性へ">男性へ</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="two-col">
+        <label>
+          適用する発送プラン
+          <input id="pinkoiShippingPlan" value="Tシャツ発送">
+        </label>
+
+        <label>
+          その他
+          <input id="pinkoiOther" placeholder="例：環境に優しい商品">
+        </label>
+      </div>
+
+      <label>
+        商品写真URL
+        <input id="pinkoiImageUrls" placeholder="複数の場合は半角コンマで区切る">
+      </label>
+
+      <label>
+        タグ
+        <input id="pinkoiTags" value="Tシャツ" placeholder="複数の場合は半角コンマで区切る">
+      </label>
+
+      <fieldset>
+        <legend>日本語</legend>
+        <label>
+          おすすめポイント
+          <textarea id="pinkoiHighlightJa" rows="3" placeholder="15〜120文字"></textarea>
+        </label>
+        <label>
+          商品説明
+          <textarea id="pinkoiDescriptionJa" rows="7" placeholder="15〜10000文字"></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>English 任意</legend>
+        <label>
+          Highlight
+          <textarea id="pinkoiHighlightEn" rows="3"></textarea>
+        </label>
+        <label>
+          Description
+          <textarea id="pinkoiDescriptionEn" rows="6"></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>繁體中文 任意</legend>
+        <label>
+          推薦重點
+          <textarea id="pinkoiHighlightZh" rows="3"></textarea>
+        </label>
+        <label>
+          商品描述
+          <textarea id="pinkoiDescriptionZh" rows="6"></textarea>
+        </label>
+      </fieldset>
 
       <label>
         公開状態
@@ -171,8 +285,8 @@
       </label>
 
       <label>
-        メモ
-        <input id="pinkoiProductNote" placeholder="任意">
+        管理メモ
+        <input id="pinkoiProductNote" placeholder="Pinkoiには出力されません">
       </label>
 
       <div class="dialog-actions">
@@ -213,7 +327,7 @@
       </div>
 
       <div class="two-col">
-        <label>Pinkoi価格 TWD<input id="bulkPrice" type="number" min="0" value="1200"></label>
+        <label>Pinkoi価格 JPY<input id="bulkPrice" type="number" min="0" value="1200"></label>
         <label>Pinkoi商品ID<input id="bulkPinkoiId" placeholder="任意"></label>
       </div>
 
@@ -244,7 +358,7 @@
       </div>
 
       <div class="two-col">
-        <label>Pinkoi価格 TWD<input id="variantPrice" type="number" min="0" value="1200"></label>
+        <label>Pinkoi価格 JPY<input id="variantPrice" type="number" min="0" value="1200"></label>
         <label>Pinkoi商品ID<input id="variantPinkoiId" placeholder="任意"></label>
       </div>
 

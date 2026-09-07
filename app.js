@@ -126,6 +126,7 @@ let state = {
 
 let firebaseApi = null;
 let unsubscribers = [];
+let XLSXLib = null;
 
 // Firestore上ではPinkoi専用コレクションを使います。
 // 既存のTシャツ在庫と同じFirebaseプロジェクトを使ってもデータは混ざりません。
@@ -264,6 +265,19 @@ async function deleteCollectionItem(collectionName, id) {
 
 function displayName(item, lang="en") {
   return item?.displayName?.[lang] || item?.displayName?.ja || item?.internalName || "";
+}
+
+function variantPriceJpy(v) {
+  return Number(v?.priceJpy ?? v?.priceTwd ?? 0);
+}
+
+function productPriceJpy(p, fallbackVariant = null) {
+  return Number(
+    p?.priceJpy ??
+    p?.priceTwd ??
+    variantPriceJpy(fallbackVariant) ??
+    0
+  );
 }
 
 function generatedTitle(bodyId, designId, lang="en") {
@@ -569,7 +583,7 @@ function getPinkoiProduct(bodyId, designId) {
 
 function effectivePinkoiTitle(bodyId, designId) {
   const product = getPinkoiProduct(bodyId, designId);
-  return product?.customTitle?.trim() || generatedTitle(bodyId, designId, "en");
+  return product?.titleEn?.trim() || product?.customTitle?.trim() || generatedTitle(bodyId, designId, "en");
 }
 
 function pinkoiStatusLabel(status) {
@@ -587,13 +601,47 @@ function openPinkoiProduct(bodyId, designId) {
   $("#pinkoiProductKey").value = key;
   $("#pinkoiProductBodyId").value = bodyId;
   $("#pinkoiProductDesignId").value = designId;
+
   $("#pinkoiManageName").textContent =
     `${design?.internalName || "?"} / ${body?.internalName || "?"}`;
+
   $("#pinkoiAutoTitle").textContent =
-    `Auto: ${generatedTitle(bodyId, designId, "en")}`;
-  $("#pinkoiCustomTitle").value = product?.customTitle || "";
+    `Auto EN: ${generatedTitle(bodyId, designId, "en")}`;
+
+  $("#pinkoiTitleJa").value =
+    product?.titleJa || generatedTitle(bodyId, designId, "ja");
+
+  $("#pinkoiTitleEn").value =
+    product?.titleEn || product?.customTitle || generatedTitle(bodyId, designId, "en");
+
+  $("#pinkoiTitleZh").value =
+    product?.titleZh || generatedTitle(bodyId, designId, "zhTW");
+
   $("#pinkoiProductId").value = product?.pinkoiProductId || "";
-  $("#pinkoiProductPrice").value = product?.priceTwd ?? 1200;
+  $("#pinkoiProductPrice").value = productPriceJpy(product) || 6380;
+
+  $("#pinkoiCategory").value =
+    product?.category || "ファッション > Tシャツ - 1";
+
+  $("#pinkoiProductionMethod").value =
+    product?.productionMethod || "工場生産";
+
+  $("#pinkoiOrigin").value = product?.origin || "";
+  $("#pinkoiShipDays").value = product?.shipDays ?? "";
+  $("#pinkoiMaterial").value = product?.material || "コットン";
+  $("#pinkoiTarget").value = product?.target || "ユニセックス";
+  $("#pinkoiShippingPlan").value = product?.shippingPlan || "Tシャツ発送";
+  $("#pinkoiOther").value = product?.other || "";
+  $("#pinkoiImageUrls").value = product?.imageUrls || "";
+  $("#pinkoiTags").value = product?.tags || "Tシャツ";
+
+  $("#pinkoiHighlightJa").value = product?.highlightJa || "";
+  $("#pinkoiDescriptionJa").value = product?.descriptionJa || "";
+  $("#pinkoiHighlightEn").value = product?.highlightEn || "";
+  $("#pinkoiDescriptionEn").value = product?.descriptionEn || "";
+  $("#pinkoiHighlightZh").value = product?.highlightZh || "";
+  $("#pinkoiDescriptionZh").value = product?.descriptionZh || "";
+
   $("#pinkoiProductStatus").value = product?.status || "draft";
   $("#pinkoiProductNote").value = product?.note || "";
 
@@ -611,9 +659,35 @@ async function submitPinkoiProduct(e) {
     id,
     bodyId,
     designId,
-    customTitle: $("#pinkoiCustomTitle").value.trim(),
+
+    titleJa: $("#pinkoiTitleJa").value.trim(),
+    titleEn: $("#pinkoiTitleEn").value.trim(),
+    titleZh: $("#pinkoiTitleZh").value.trim(),
+
+    // compatibility with earlier version
+    customTitle: $("#pinkoiTitleEn").value.trim(),
+
     pinkoiProductId: $("#pinkoiProductId").value.trim(),
-    priceTwd: Number($("#pinkoiProductPrice").value || 0),
+    priceJpy: Number($("#pinkoiProductPrice").value || 0),
+
+    category: $("#pinkoiCategory").value.trim(),
+    productionMethod: $("#pinkoiProductionMethod").value,
+    origin: $("#pinkoiOrigin").value.trim(),
+    shipDays: $("#pinkoiShipDays").value === "" ? null : Number($("#pinkoiShipDays").value),
+    material: $("#pinkoiMaterial").value.trim(),
+    target: $("#pinkoiTarget").value,
+    shippingPlan: $("#pinkoiShippingPlan").value.trim(),
+    other: $("#pinkoiOther").value.trim(),
+    imageUrls: $("#pinkoiImageUrls").value.trim(),
+    tags: $("#pinkoiTags").value.trim(),
+
+    highlightJa: $("#pinkoiHighlightJa").value.trim(),
+    descriptionJa: $("#pinkoiDescriptionJa").value.trim(),
+    highlightEn: $("#pinkoiHighlightEn").value.trim(),
+    descriptionEn: $("#pinkoiDescriptionEn").value.trim(),
+    highlightZh: $("#pinkoiHighlightZh").value.trim(),
+    descriptionZh: $("#pinkoiDescriptionZh").value.trim(),
+
     status: $("#pinkoiProductStatus").value || "draft",
     note: $("#pinkoiProductNote").value.trim(),
     updatedAt: new Date().toISOString()
@@ -660,6 +734,9 @@ function renderPinkoi() {
         body?.internalName,
         design?.internalName,
         generatedTitle(group.bodyId, group.designId, "en"),
+        product?.titleJa,
+        product?.titleEn,
+        product?.titleZh,
         product?.customTitle,
         product?.pinkoiProductId
       ].filter(Boolean).join(" ").toLowerCase();
@@ -681,7 +758,7 @@ function renderPinkoi() {
 
     const title = effectivePinkoiTitle(group.bodyId, group.designId);
     const status = product?.status || "draft";
-    const price = product?.priceTwd ?? group.variants[0]?.priceTwd ?? 1200;
+    const price = productPriceJpy(product, group.variants[0]) || 0;
     const productId = product?.pinkoiProductId || "未設定";
 
     const colorGroups = new Map();
@@ -724,7 +801,7 @@ function renderPinkoi() {
 
         <div class="pinkoi-meta">
           <span>ID: ${esc(productId)}</span>
-          <span>TWD ${Number(price || 0).toLocaleString()}</span>
+          <span>JPY ${Number(price || 0).toLocaleString()}</span>
         </div>
 
         <div class="pinkoi-color-list">
@@ -742,6 +819,241 @@ function renderPinkoi() {
       </article>
     `;
   }).join("") || `<div class="muted">Pinkoi商品がありません。</div>`;
+}
+
+
+function excelSetCell(ws, row, col, value) {
+  const addr = XLSXLib.utils.encode_cell({ r: row - 1, c: col - 1 });
+  if (value === undefined || value === null || value === "") {
+    delete ws[addr];
+    return;
+  }
+  ws[addr] = {
+    t: typeof value === "number" ? "n" : "s",
+    v: value
+  };
+}
+
+function getDraftPinkoiGroups() {
+  const groups = [];
+
+  for (const product of state.pinkoiProducts) {
+    if ((product.status || "draft") !== "draft") continue;
+
+    const variants = state.inventory.filter(v =>
+      v.bodyId === product.bodyId &&
+      v.designId === product.designId
+    );
+
+    if (!variants.length) continue;
+
+    groups.push({ product, variants });
+  }
+
+  return groups;
+}
+
+function validatePinkoiExport(groups) {
+  const problems = [];
+
+  if (!groups.length) {
+    problems.push("Draftの商品がありません。");
+    return problems;
+  }
+
+  groups.forEach(({ product, variants }) => {
+    const body = byId(state.bodies, product.bodyId);
+    const design = byId(state.designs, product.designId);
+    const label = `${design?.internalName || "?"} / ${body?.internalName || "?"}`;
+
+    const titleJa = product.titleJa || generatedTitle(product.bodyId, product.designId, "ja");
+    const price = productPriceJpy(product, variants[0]);
+
+    if (!titleJa || titleJa.length < 3) problems.push(`${label}: 日本語の商品名が必要です。`);
+    if (!product.category) problems.push(`${label}: 商品カテゴリーが必要です。`);
+    if (!product.productionMethod) problems.push(`${label}: 制作方法が必要です。`);
+    if (!product.origin) problems.push(`${label}: 製造地が必要です。`);
+    if (product.shipDays === null || product.shipDays === undefined || product.shipDays === "") {
+      problems.push(`${label}: 発送までの日数が必要です。`);
+    }
+    if (!product.material) problems.push(`${label}: 素材が必要です。`);
+    if (!product.target) problems.push(`${label}: ターゲットが必要です。`);
+    if (!product.highlightJa || product.highlightJa.length < 15) {
+      problems.push(`${label}: 日本語のおすすめポイントを15文字以上入力してください。`);
+    }
+    if (!product.descriptionJa || product.descriptionJa.length < 15) {
+      problems.push(`${label}: 日本語の商品説明を15文字以上入力してください。`);
+    }
+    if (!price || price < 1) problems.push(`${label}: 価格 JPY が必要です。`);
+  });
+
+  return problems;
+}
+
+function pinkoiVariantRows(product, variants) {
+  const sizeOrder = new Map(["XXS","XS","S","M","L","XL","XXL","3XL"].map((s, i) => [s, i]));
+
+  return [...variants].sort((a, b) => {
+    const ca = byId(state.colors, a.colorId)?.internalName || "";
+    const cb = byId(state.colors, b.colorId)?.internalName || "";
+    const sa = sizeOrder.get(String(a.size).toUpperCase()) ?? 99;
+    const sb = sizeOrder.get(String(b.size).toUpperCase()) ?? 99;
+    return ca.localeCompare(cb) || sa - sb;
+  });
+}
+
+async function exportPinkoiXlsx() {
+  try {
+    const groups = getDraftPinkoiGroups();
+    const problems = validatePinkoiExport(groups);
+
+    if (problems.length) {
+      alert(
+        "XLSXを出力する前に以下を確認してください。\n\n" +
+        problems.slice(0, 20).join("\n") +
+        (problems.length > 20 ? `\nほか ${problems.length - 20} 件` : "")
+      );
+      return;
+    }
+
+    const btn = $("#exportPinkoiXlsxBtn");
+    btn.disabled = true;
+    btn.textContent = "XLSX作成中...";
+
+    const XLSXModule = await import(
+      "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs"
+    );
+    XLSXLib = XLSXModule;
+
+    const response = await fetch("./pinkoi-template.xlsx", { cache: "no-store" });
+    if (!response.ok) throw new Error("pinkoi-template.xlsx を読み込めません。");
+
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSXLib.read(buffer, {
+      type: "array",
+      cellStyles: true,
+      cellFormula: true,
+      cellDates: true
+    });
+
+    const sheetName = "2. 入力用 - 商品情報テンプレート";
+    const ws = workbook.Sheets[sheetName];
+    if (!ws) throw new Error("Pinkoi入力用シートが見つかりません。");
+
+    // Data begins on row 10. Keep A1:AY9 untouched.
+    let row = 10;
+    let uploadNo = 1;
+
+    for (const { product, variants } of groups) {
+      const body = byId(state.bodies, product.bodyId);
+      const design = byId(state.designs, product.designId);
+      const orderedVariants = pinkoiVariantRows(product, variants);
+
+      const titleJa =
+        product.titleJa || generatedTitle(product.bodyId, product.designId, "ja");
+      const titleEn =
+        product.titleEn || generatedTitle(product.bodyId, product.designId, "en");
+      const titleZh =
+        product.titleZh || generatedTitle(product.bodyId, product.designId, "zhTW");
+
+      const price = productPriceJpy(product, orderedVariants[0]);
+
+      orderedVariants.forEach((v, index) => {
+        const color = byId(state.colors, v.colorId);
+        const first = index === 0;
+        const size = String(v.size || "").toUpperCase();
+        const stock = Number(v.pinkoiStock || 0);
+
+        // A:AY = 1:51
+        excelSetCell(ws, row, 1, uploadNo);
+
+        if (first) {
+          excelSetCell(ws, row, 2, "オリジナル商品");
+          excelSetCell(ws, row, 4, product.imageUrls || "");
+          excelSetCell(ws, row, 5, titleJa);
+          excelSetCell(ws, row, 6, product.category);
+          excelSetCell(ws, row, 7, product.productionMethod);
+          excelSetCell(ws, row, 8, product.origin);
+          excelSetCell(ws, row, 9, Number(product.shipDays));
+        }
+
+        // Exact sales color names use custom specification.
+        excelSetCell(ws, row, 12, "自分で設定");
+        excelSetCell(ws, row, 13, displayName(color, "ja") || color?.internalName || "");
+
+        excelSetCell(ws, row, 14, "サイズ -- 規定");
+        excelSetCell(ws, row, 15, size);
+
+        excelSetCell(ws, row, 16, v.sku || "");
+        excelSetCell(ws, row, 17, stock);
+        excelSetCell(ws, row, 18, price);
+
+        if (first) {
+          excelSetCell(ws, row, 19, product.material);
+          excelSetCell(ws, row, 21, product.other || "");
+          excelSetCell(ws, row, 22, product.target);
+          excelSetCell(ws, row, 23, product.tags || "");
+          excelSetCell(ws, row, 24, product.highlightJa);
+          excelSetCell(ws, row, 25, product.descriptionJa);
+          excelSetCell(ws, row, 27, product.shippingPlan || "");
+
+          excelSetCell(ws, row, 28, titleEn || "");
+          excelSetCell(ws, row, 29, product.highlightEn || "");
+          excelSetCell(ws, row, 30, product.descriptionEn || "");
+
+          excelSetCell(ws, row, 34, titleZh || "");
+          excelSetCell(ws, row, 35, product.highlightZh || "");
+          excelSetCell(ws, row, 36, product.descriptionZh || "");
+        }
+
+        // Custom specification localized values
+        excelSetCell(ws, row, 31, displayName(color, "en") || color?.internalName || "");
+        excelSetCell(ws, row, 32, size);
+
+        excelSetCell(ws, row, 37, displayName(color, "zhTW") || color?.internalName || "");
+        excelSetCell(ws, row, 38, size);
+
+        row++;
+      });
+
+      uploadNo++;
+    }
+
+    // Remove original example / stale data below generated rows.
+    // We only clear rows 10 through 2000 in the input sheet while keeping headers intact.
+    const maxClearRow = Math.max(row + 20, 200);
+    for (let r = row; r <= maxClearRow; r++) {
+      for (let c = 1; c <= 51; c++) {
+        const addr = XLSXLib.utils.encode_cell({ r: r - 1, c: c - 1 });
+        if (ws[addr]) delete ws[addr];
+      }
+    }
+
+    ws["!ref"] = `A1:AY${Math.max(9, row - 1)}`;
+
+    const today = new Date();
+    const stamp =
+      today.getFullYear().toString() +
+      String(today.getMonth() + 1).padStart(2, "0") +
+      String(today.getDate()).padStart(2, "0");
+
+    XLSXLib.writeFile(
+      workbook,
+      `Pinkoi_ICELOLLY_new_products_${stamp}.xlsx`,
+      { compression: true }
+    );
+
+    showToast(`${groups.length}商品をXLSXに出力しました`);
+  } catch (err) {
+    console.error(err);
+    alert(`XLSX出力に失敗しました。\n${err.message || err}`);
+  } finally {
+    const btn = $("#exportPinkoiXlsxBtn");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "新規登録用XLSXを出力";
+    }
+  }
 }
 
 async function adjustStock(id, delta) {
@@ -853,7 +1165,7 @@ function openBulkVariantDialog() {
   $("#bulkBody").value = state.bodies[0]?.id || "";
   renderBulkDesignOptions();
   renderBulkColorOptions();
-  $("#bulkPrice").value = 1200;
+  $("#bulkPrice").value = 6380;
   $("#bulkPinkoiId").value = "";
   $("#bulkSkuPrefix").value = "";
   renderBulkSizeRows();
@@ -866,7 +1178,7 @@ async function submitBulkVariant(e) {
   const bodyId = $("#bulkBody").value;
   const designId = $("#bulkDesign").value;
   const colorId = $("#bulkColor").value;
-  const priceTwd = Number($("#bulkPrice").value || 0);
+  const priceJpy = Number($("#bulkPrice").value || 0);
   const pinkoiProductId = $("#bulkPinkoiId").value.trim();
 
   if (!bodyId || !designId || !colorId) {
@@ -899,7 +1211,7 @@ async function submitBulkVariant(e) {
       sku,
       stock,
       pinkoiStock,
-      priceTwd,
+      priceJpy,
       pinkoiProductId,
       updatedAt: new Date().toISOString()
     };
@@ -923,7 +1235,7 @@ function openVariant(id=null) {
   $("#variantSku").value = v?.sku || "";
   $("#variantStock").value = v?.stock ?? 0;
   $("#variantPinkoiStock").value = v?.pinkoiStock ?? 0;
-  $("#variantPrice").value = v?.priceTwd ?? 1200;
+  $("#variantPrice").value = v?.priceJpy ?? v?.priceTwd ?? 6380;
   $("#variantPinkoiId").value = v?.pinkoiProductId || "";
   $("#variantDialog").showModal();
 }
@@ -939,7 +1251,7 @@ async function submitVariant(e) {
     sku: $("#variantSku").value.trim(),
     stock: Number($("#variantStock").value || 0),
     pinkoiStock: Number($("#variantPinkoiStock").value || 0),
-    priceTwd: Number($("#variantPrice").value || 0),
+    priceJpy: Number($("#variantPrice").value || 0),
     pinkoiProductId: $("#variantPinkoiId").value.trim(),
     updatedAt: new Date().toISOString()
   };
@@ -1125,6 +1437,7 @@ function bindEvents() {
   $("#pinkoiSearchInput")?.addEventListener("input", renderPinkoi);
   $("#pinkoiBodyFilter")?.addEventListener("change", renderPinkoi);
   $("#pinkoiStatusFilter")?.addEventListener("change", renderPinkoi);
+  $("#exportPinkoiXlsxBtn")?.addEventListener("click", exportPinkoiXlsx);
 
   $("#bulkBody").addEventListener("change", () => {
     renderBulkDesignOptions();
