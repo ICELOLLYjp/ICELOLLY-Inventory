@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ICELOLLY Pinkoi Inventory</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">ICELOLLY</div>
+        <h1>Pinkoi Inventory</h1>
+      </div>
+      <div class="account">
+        <span id="modeBadge" class="badge">DEMO</span>
+        <span id="userLabel"></span>
+        <button id="loginBtn" class="button secondary">Google Login</button>
+        <button id="logoutBtn" class="button secondary hidden">Logout</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="inventory">Inventory</button>
+      <button class="tab" data-tab="masters">Masters</button>
+      <button class="tab" data-tab="pinkoi">Pinkoi</button>
+    </nav>
+
+    <main>
+      <section id="inventoryTab" class="panel tabpanel">
+        <div class="summary-grid">
+          <div class="summary-card"><span>Total Stock</span><strong id="totalStock">0</strong></div>
+          <div class="summary-card"><span>Pinkoi Stock</span><strong id="totalPinkoiStock">0</strong></div>
+          <div class="summary-card"><span>Needs Update</span><strong id="needsUpdate">0</strong></div>
+          <div class="summary-card"><span>Sold Out</span><strong id="soldOut">0</strong></div>
+        </div>
+
+        <div class="toolbar">
+          <input id="searchInput" type="search" placeholder="商品、デザイン、カラー、SKUを検索">
+          <select id="bodyFilter"><option value="">All Bodies</option></select>
+          <select id="sortSelect">
+            <option value="body">Body / Design</option>
+            <option value="stockAsc">Stock Low</option>
+            <option value="stockDesc">Stock High</option>
+            <option value="diff">Pinkoi Update</option>
+          </select>
+          <button id="addVariantBtn" class="button">在庫を追加</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Body</th>
+                <th>Design</th>
+                <th>Color</th>
+                <th>Size</th>
+                <th>SKU</th>
+                <th>Stock</th>
+                <th>Pinkoi</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="inventoryRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="mastersTab" class="panel tabpanel hidden">
+        <div class="master-grid">
+          <div class="master-card">
+            <div class="section-title">
+              <h2>Bodies</h2>
+              <button class="button small" data-add-master="body">追加</button>
+            </div>
+            <div id="bodyList" class="master-list"></div>
+          </div>
+
+          <div class="master-card">
+            <div class="section-title">
+              <h2>Designs</h2>
+              <button class="button small" data-add-master="design">追加</button>
+            </div>
+            <div id="designList" class="master-list"></div>
+          </div>
+
+          <div class="master-card">
+            <div class="section-title">
+              <h2>Colors</h2>
+              <button class="button small" data-add-master="color">追加</button>
+            </div>
+            <div id="colorList" class="master-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pinkoiTab" class="panel tabpanel hidden">
+        <div class="section-title">
+          <div>
+            <h2>Pinkoi Preview</h2>
+            <p class="muted">管理用名称とは別に、販売用の商品名とカラー名を表示します。</p>
+          </div>
+        </div>
+        <div id="pinkoiCards" class="pinkoi-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="variantDialog">
+    <form method="dialog" id="variantForm" class="dialog-form">
+      <div class="section-title">
+        <h2 id="variantDialogTitle">在庫を追加</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <input type="hidden" id="variantId">
+
+      <label>Body<select id="variantBody" required></select></label>
+      <label>Design<select id="variantDesign" required></select></label>
+      <label>Color<select id="variantColor" required></select></label>
+      <label>Size<input id="variantSize" placeholder="S / M / L / XL" required></label>
+      <label>SKU<input id="variantSku" placeholder="TS ORG WHALE GR M"></label>
+
+      <div class="two-col">
+        <label>実在庫<input id="variantStock" type="number" min="0" value="0" required></label>
+        <label>Pinkoi掲載在庫<input id="variantPinkoiStock" type="number" min="0" value="0" required></label>
+      </div>
+
+      <div class="two-col">
+        <label>Pinkoi価格 TWD<input id="variantPrice" type="number" min="0" value="1200"></label>
+        <label>Pinkoi商品ID<input id="variantPinkoiId" placeholder="任意"></label>
+      </div>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="masterDialog">
+    <form method="dialog" id="masterForm" class="dialog-form">
+      <div class="section-title">
+        <h2 id="masterDialogTitle">Master</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <input type="hidden" id="masterType">
+      <input type="hidden" id="masterId">
+
+      <label>管理用名称<input id="masterInternalName" required></label>
+      <label>管理用コード<input id="masterCode" placeholder="ORG / WHALE / GR"></label>
+
+      <fieldset>
+        <legend>販売用名称</legend>
+        <label>日本語<input id="masterJa"></label>
+        <label>English<input id="masterEn"></label>
+        <label>繁體中文<input id="masterZh"></label>
+      </fieldset>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
