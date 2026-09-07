@@ -509,6 +509,167 @@ async function adjustStock(id, delta) {
   await saveCollectionItem("inventory", updated);
 }
 
+
+function bodyCode(bodyId) {
+  return byId(state.bodies, bodyId)?.code || "BODY";
+}
+
+function designCode(designId) {
+  return byId(state.designs, designId)?.code || "DESIGN";
+}
+
+function colorCode(colorId) {
+  return byId(state.colors, colorId)?.code || "COLOR";
+}
+
+function cleanSkuPart(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function generatedSkuPrefix(bodyId, designId, colorId) {
+  return [
+    "TS",
+    cleanSkuPart(bodyCode(bodyId)),
+    cleanSkuPart(designCode(designId)),
+    cleanSkuPart(colorCode(colorId))
+  ].filter(Boolean).join("_");
+}
+
+function renderBulkDesignOptions(selectedDesignId = "") {
+  const bodyId = $("#bulkBody").value;
+  const designs = allowedDesignsForBody(bodyId);
+
+  $("#bulkDesign").innerHTML =
+    `<option value="">Select design</option>` +
+    designs.map(d => `<option value="${esc(d.id)}">${esc(d.internalName)}</option>`).join("");
+
+  if (selectedDesignId && designs.some(d => d.id === selectedDesignId)) {
+    $("#bulkDesign").value = selectedDesignId;
+  } else if (designs[0]) {
+    $("#bulkDesign").value = designs[0].id;
+  }
+}
+
+function renderBulkColorOptions(selectedColorId = "") {
+  const bodyId = $("#bulkBody").value;
+  const colors = allowedColorsForBody(bodyId);
+
+  $("#bulkColor").innerHTML =
+    `<option value="">Select color</option>` +
+    colors.map(c => `<option value="${esc(c.id)}">${esc(c.internalName)}</option>`).join("");
+
+  if (selectedColorId && colors.some(c => c.id === selectedColorId)) {
+    $("#bulkColor").value = selectedColorId;
+  } else if (colors[0]) {
+    $("#bulkColor").value = colors[0].id;
+  }
+}
+
+function updateBulkSkuRows() {
+  const prefix = $("#bulkSkuPrefix").value.trim() ||
+    generatedSkuPrefix($("#bulkBody").value, $("#bulkDesign").value, $("#bulkColor").value);
+
+  $$("#bulkSizeRows tr").forEach(row => {
+    const size = row.dataset.size;
+    const skuInput = row.querySelector("[data-bulk-sku]");
+    if (skuInput && !skuInput.dataset.manual) {
+      skuInput.value = `${prefix}_${cleanSkuPart(size)}`;
+    }
+  });
+}
+
+function renderBulkSizeRows() {
+  const sizes = APP_CONFIG.sizes || ["S", "M", "L", "XL", "XXL"];
+
+  $("#bulkSizeRows").innerHTML = sizes.map(size => `
+    <tr data-size="${esc(size)}">
+      <td>${esc(size)}</td>
+      <td><input type="number" min="0" value="0" data-bulk-stock></td>
+      <td><input type="number" min="0" value="0" data-bulk-pinkoi></td>
+      <td><input data-bulk-sku></td>
+    </tr>
+  `).join("");
+
+  $$("#bulkSizeRows [data-bulk-sku]").forEach(input => {
+    input.addEventListener("input", () => {
+      input.dataset.manual = input.value.trim() ? "1" : "";
+    });
+  });
+
+  updateBulkSkuRows();
+}
+
+function openBulkVariantDialog() {
+  $("#bulkBody").innerHTML =
+    `<option value="">Select body</option>` +
+    state.bodies.map(b => `<option value="${esc(b.id)}">${esc(b.internalName)}</option>`).join("");
+
+  $("#bulkBody").value = state.bodies[0]?.id || "";
+  renderBulkDesignOptions();
+  renderBulkColorOptions();
+  $("#bulkPrice").value = 1200;
+  $("#bulkPinkoiId").value = "";
+  $("#bulkSkuPrefix").value = "";
+  renderBulkSizeRows();
+  $("#bulkVariantDialog").showModal();
+}
+
+async function submitBulkVariant(e) {
+  e.preventDefault();
+
+  const bodyId = $("#bulkBody").value;
+  const designId = $("#bulkDesign").value;
+  const colorId = $("#bulkColor").value;
+  const priceTwd = Number($("#bulkPrice").value || 0);
+  const pinkoiProductId = $("#bulkPinkoiId").value.trim();
+
+  if (!bodyId || !designId || !colorId) {
+    alert("Body、Design、Colorを選択してください。");
+    return;
+  }
+
+  const rows = $$("#bulkSizeRows tr");
+  let saved = 0;
+
+  for (const row of rows) {
+    const size = row.dataset.size;
+    const stock = Number(row.querySelector("[data-bulk-stock]").value || 0);
+    const pinkoiStock = Number(row.querySelector("[data-bulk-pinkoi]").value || 0);
+    const sku = row.querySelector("[data-bulk-sku]").value.trim();
+
+    const existing = state.inventory.find(v =>
+      v.bodyId === bodyId &&
+      v.designId === designId &&
+      v.colorId === colorId &&
+      String(v.size).toUpperCase() === String(size).toUpperCase()
+    );
+
+    const item = {
+      id: existing?.id || slug(),
+      bodyId,
+      designId,
+      colorId,
+      size,
+      sku,
+      stock,
+      pinkoiStock,
+      priceTwd,
+      pinkoiProductId,
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveCollectionItem("inventory", item);
+    saved++;
+  }
+
+  $("#bulkVariantDialog").close();
+  showToast(`${saved}サイズを保存しました`);
+}
+
 function openVariant(id=null) {
   const v = id ? state.inventory.find(x => x.id === id) : null;
   $("#variantDialogTitle").textContent = v ? "在庫を編集" : "在庫を追加";
@@ -714,8 +875,31 @@ function bindEvents() {
     renderVariantDesignOptions();
     renderVariantColorOptions();
   });
-  $("#addVariantBtn").addEventListener("click", () => openVariant());
+  $("#addVariantBtn").addEventListener("click", openBulkVariantDialog);
   $("#variantForm").addEventListener("submit", submitVariant);
+  $("#bulkVariantForm").addEventListener("submit", submitBulkVariant);
+
+  $("#bulkBody").addEventListener("change", () => {
+    renderBulkDesignOptions();
+    renderBulkColorOptions();
+    $("#bulkSkuPrefix").value = "";
+    updateBulkSkuRows();
+  });
+
+  $("#bulkDesign").addEventListener("change", () => {
+    $("#bulkSkuPrefix").value = "";
+    updateBulkSkuRows();
+  });
+
+  $("#bulkColor").addEventListener("change", () => {
+    $("#bulkSkuPrefix").value = "";
+    updateBulkSkuRows();
+  });
+
+  $("#bulkSkuPrefix").addEventListener("input", () => {
+    $$("#bulkSizeRows [data-bulk-sku]").forEach(input => delete input.dataset.manual);
+    updateBulkSkuRows();
+  });
   $("#masterForm").addEventListener("submit", submitMaster);
   $("#loginBtn").addEventListener("click", login);
   $("#logoutBtn").addEventListener("click", logout);

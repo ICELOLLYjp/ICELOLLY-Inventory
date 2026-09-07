@@ -114,3 +114,9 @@ dialog::backdrop { background: rgba(0,0,0,.32); }
   .toolbar input { grid-column: auto; }
   .two-col { grid-template-columns: 1fr; }
 }
+
+
+.bulk-size-table-wrap { overflow-x: auto; }
+.bulk-size-table { min-width: 520px; }
+.bulk-size-table input { min-height: 36px; }
+.bulk-size-table td:first-child { font-weight: 700; width: 70px; }

@@ -45,7 +45,7 @@
             <option value="stockDesc">Stock High</option>
             <option value="diff">Pinkoi Update</option>
           </select>
-          <button id="addVariantBtn" class="button">在庫を追加</button>
+          <button id="addVariantBtn" class="button">サイズ一括登録</button>
         </div>
 
         <div class="table-wrap">
@@ -115,6 +115,49 @@
       </section>
     </main>
   </div>
+
+
+  <dialog id="bulkVariantDialog">
+    <form method="dialog" id="bulkVariantForm" class="dialog-form">
+      <div class="section-title">
+        <h2>サイズ一括登録</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+
+      <label>Body<select id="bulkBody" required></select></label>
+      <label>Design<select id="bulkDesign" required></select></label>
+      <label>Color<select id="bulkColor" required></select></label>
+
+      <label>
+        SKU Prefix
+        <input id="bulkSkuPrefix" placeholder="自動生成">
+      </label>
+
+      <div class="bulk-size-table-wrap">
+        <table class="bulk-size-table">
+          <thead>
+            <tr>
+              <th>Size</th>
+              <th>Stock</th>
+              <th>Pinkoi</th>
+              <th>SKU</th>
+            </tr>
+          </thead>
+          <tbody id="bulkSizeRows"></tbody>
+        </table>
+      </div>
+
+      <div class="two-col">
+        <label>Pinkoi価格 TWD<input id="bulkPrice" type="number" min="0" value="1200"></label>
+        <label>Pinkoi商品ID<input id="bulkPinkoiId" placeholder="任意"></label>
+      </div>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">まとめて保存</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="variantDialog">
     <form method="dialog" id="variantForm" class="dialog-form">
