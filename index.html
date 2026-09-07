@@ -105,15 +105,82 @@
       <section id="pinkoiTab" class="panel tabpanel hidden">
         <div class="section-title">
           <div>
-            <h2>Pinkoi Preview</h2>
-            <p class="muted">管理用名称とは別に、販売用の商品名とカラー名を表示します。</p>
+            <h2>Pinkoi Products</h2>
+            <p class="muted">Body + DesignごとにPinkoiの商品情報を管理します。</p>
           </div>
         </div>
+
+        <div class="toolbar pinkoi-toolbar">
+          <input id="pinkoiSearchInput" type="search" placeholder="Pinkoi商品名、Design、商品IDを検索">
+          <select id="pinkoiBodyFilter"><option value="">All Bodies</option></select>
+          <select id="pinkoiStatusFilter">
+            <option value="">All Status</option>
+            <option value="draft">Draft</option>
+            <option value="selling">Selling</option>
+            <option value="hidden">Hidden</option>
+          </select>
+        </div>
+
         <div id="pinkoiCards" class="pinkoi-grid"></div>
       </section>
     </main>
   </div>
 
+
+
+  <dialog id="pinkoiProductDialog">
+    <form method="dialog" id="pinkoiProductForm" class="dialog-form">
+      <div class="section-title">
+        <h2>Pinkoi商品情報</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+
+      <input type="hidden" id="pinkoiProductKey">
+      <input type="hidden" id="pinkoiProductBodyId">
+      <input type="hidden" id="pinkoiProductDesignId">
+
+      <div class="info-box">
+        <strong id="pinkoiManageName"></strong>
+        <span id="pinkoiAutoTitle" class="muted"></span>
+      </div>
+
+      <label>
+        Pinkoi販売用商品名
+        <input id="pinkoiCustomTitle" placeholder="未入力なら自動生成名を使用">
+      </label>
+
+      <div class="two-col">
+        <label>
+          Pinkoi商品ID
+          <input id="pinkoiProductId" placeholder="任意">
+        </label>
+
+        <label>
+          価格 TWD
+          <input id="pinkoiProductPrice" type="number" min="0" value="1200">
+        </label>
+      </div>
+
+      <label>
+        公開状態
+        <select id="pinkoiProductStatus">
+          <option value="draft">Draft</option>
+          <option value="selling">Selling</option>
+          <option value="hidden">Hidden</option>
+        </select>
+      </label>
+
+      <label>
+        メモ
+        <input id="pinkoiProductNote" placeholder="任意">
+      </label>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">保存</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="bulkVariantDialog">
     <form method="dialog" id="bulkVariantForm" class="dialog-form">

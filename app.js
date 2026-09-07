@@ -18,6 +18,7 @@ const seed = {
     { id: "pink01", internalName: "Pink", code: "PK", displayName: { ja: "コーラルピンク", en: "Coral Pink", zhTW: "珊瑚粉紅" } },
     { id: "white01", internalName: "White", code: "WH", displayName: { ja: "ホワイト", en: "White", zhTW: "白色" } }
   ],
+  pinkoiProducts: [],
   inventory: [
     { id: "demo1", bodyId: "organic", designId: "whale", colorId: "green01", size: "M", sku: "TS-ORG-WHALE-GR-M", stock: 5, pinkoiStock: 3, priceTwd: 1200, pinkoiProductId: "" },
     { id: "demo2", bodyId: "organic", designId: "whale", colorId: "green01", size: "L", sku: "TS-ORG-WHALE-GR-L", stock: 2, pinkoiStock: 2, priceTwd: 1200, pinkoiProductId: "" },
@@ -118,6 +119,7 @@ let state = {
   designs: [],
   colors: [],
   inventory: [],
+  pinkoiProducts: [],
   user: null,
   firebaseReady: false
 };
@@ -131,7 +133,8 @@ const FIRESTORE_COLLECTIONS = {
   bodies: "pinkoi_bodies",
   designs: "pinkoi_designs",
   colors: "pinkoi_colors",
-  inventory: "pinkoi_inventory"
+  inventory: "pinkoi_inventory",
+  pinkoiProducts: "pinkoi_products"
 };
 
 function clone(v) { return JSON.parse(JSON.stringify(v)); }
@@ -163,7 +166,8 @@ function localSave() {
     bodies: state.bodies,
     designs: state.designs,
     colors: state.colors,
-    inventory: state.inventory
+    inventory: state.inventory,
+    pinkoiProducts: state.pinkoiProducts
   }));
 }
 
@@ -207,6 +211,7 @@ async function initFirebase() {
       state.designs = [];
       state.colors = [];
       state.inventory = [];
+      state.pinkoiProducts = [];
       render();
     }
   });
@@ -230,7 +235,7 @@ function startRealtime() {
     });
     unsubscribers.push(unsub);
   };
-  ["bodies","designs","colors","inventory"].forEach(watch);
+  ["bodies","designs","colors","inventory","pinkoiProducts"].forEach(watch);
 }
 
 async function saveCollectionItem(collectionName, item) {
@@ -271,6 +276,7 @@ function generatedTitle(bodyId, designId, lang="en") {
 function render() {
   renderSummary();
   renderFilters();
+  renderPinkoiFilters();
   renderInventory();
   renderMasters();
   renderPinkoi();
@@ -356,6 +362,22 @@ function renderVariantColorOptions(selectedColorId = "") {
     $("#variantColor").value = selectedColorId;
   } else if (colors[0]) {
     $("#variantColor").value = colors[0].id;
+  }
+}
+
+function renderPinkoiFilters() {
+  const bodySelect = $("#pinkoiBodyFilter");
+  if (!bodySelect) return;
+
+  const current = bodySelect.value;
+  bodySelect.innerHTML =
+    `<option value="">All Bodies</option>` +
+    state.bodies.map(b =>
+      `<option value="${esc(b.id)}">${esc(b.internalName)}</option>`
+    ).join("");
+
+  if (current && state.bodies.some(b => b.id === current)) {
+    bodySelect.value = current;
   }
 }
 
@@ -536,34 +558,190 @@ function renderMasters() {
   renderList("color", state.colors, "#colorList");
 }
 
+function pinkoiProductKey(bodyId, designId) {
+  return `${bodyId}__${designId}`;
+}
+
+function getPinkoiProduct(bodyId, designId) {
+  const key = pinkoiProductKey(bodyId, designId);
+  return state.pinkoiProducts.find(p => p.id === key) || null;
+}
+
+function effectivePinkoiTitle(bodyId, designId) {
+  const product = getPinkoiProduct(bodyId, designId);
+  return product?.customTitle?.trim() || generatedTitle(bodyId, designId, "en");
+}
+
+function pinkoiStatusLabel(status) {
+  if (status === "selling") return "Selling";
+  if (status === "hidden") return "Hidden";
+  return "Draft";
+}
+
+function openPinkoiProduct(bodyId, designId) {
+  const body = byId(state.bodies, bodyId);
+  const design = byId(state.designs, designId);
+  const product = getPinkoiProduct(bodyId, designId);
+  const key = pinkoiProductKey(bodyId, designId);
+
+  $("#pinkoiProductKey").value = key;
+  $("#pinkoiProductBodyId").value = bodyId;
+  $("#pinkoiProductDesignId").value = designId;
+  $("#pinkoiManageName").textContent =
+    `${design?.internalName || "?"} / ${body?.internalName || "?"}`;
+  $("#pinkoiAutoTitle").textContent =
+    `Auto: ${generatedTitle(bodyId, designId, "en")}`;
+  $("#pinkoiCustomTitle").value = product?.customTitle || "";
+  $("#pinkoiProductId").value = product?.pinkoiProductId || "";
+  $("#pinkoiProductPrice").value = product?.priceTwd ?? 1200;
+  $("#pinkoiProductStatus").value = product?.status || "draft";
+  $("#pinkoiProductNote").value = product?.note || "";
+
+  $("#pinkoiProductDialog").showModal();
+}
+
+async function submitPinkoiProduct(e) {
+  e.preventDefault();
+
+  const bodyId = $("#pinkoiProductBodyId").value;
+  const designId = $("#pinkoiProductDesignId").value;
+  const id = $("#pinkoiProductKey").value || pinkoiProductKey(bodyId, designId);
+
+  const item = {
+    id,
+    bodyId,
+    designId,
+    customTitle: $("#pinkoiCustomTitle").value.trim(),
+    pinkoiProductId: $("#pinkoiProductId").value.trim(),
+    priceTwd: Number($("#pinkoiProductPrice").value || 0),
+    status: $("#pinkoiProductStatus").value || "draft",
+    note: $("#pinkoiProductNote").value.trim(),
+    updatedAt: new Date().toISOString()
+  };
+
+  await saveCollectionItem("pinkoiProducts", item);
+  $("#pinkoiProductDialog").close();
+  showToast("Pinkoi商品情報を保存しました");
+}
+
 function renderPinkoi() {
+  const q = ($("#pinkoiSearchInput")?.value || "").trim().toLowerCase();
+  const bodyFilter = $("#pinkoiBodyFilter")?.value || "";
+  const statusFilter = $("#pinkoiStatusFilter")?.value || "";
+
   const groups = new Map();
+
   state.inventory.forEach(v => {
     const key = `${v.bodyId}|${v.designId}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(v);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        bodyId: v.bodyId,
+        designId: v.designId,
+        variants: []
+      });
+    }
+    groups.get(key).variants.push(v);
   });
 
-  $("#pinkoiCards").innerHTML = [...groups.entries()].map(([key, vars]) => {
-    const [bodyId, designId] = key.split("|");
-    const titleEn = generatedTitle(bodyId, designId, "en");
-    const titleJa = generatedTitle(bodyId, designId, "ja");
-    const variants = vars.map(v => {
-      const c = byId(state.colors, v.colorId);
-      const need = Number(v.stock) !== Number(v.pinkoiStock);
+  const cards = [...groups.values()]
+    .filter(group => {
+      if (bodyFilter && group.bodyId !== bodyFilter) return false;
+
+      const body = byId(state.bodies, group.bodyId);
+      const design = byId(state.designs, group.designId);
+      const product = getPinkoiProduct(group.bodyId, group.designId);
+      const status = product?.status || "draft";
+
+      if (statusFilter && status !== statusFilter) return false;
+
+      if (!q) return true;
+
+      const hay = [
+        body?.internalName,
+        design?.internalName,
+        generatedTitle(group.bodyId, group.designId, "en"),
+        product?.customTitle,
+        product?.pinkoiProductId
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      return hay.includes(q);
+    })
+    .sort((a, b) => {
+      const da = byId(state.designs, a.designId)?.internalName || "";
+      const db = byId(state.designs, b.designId)?.internalName || "";
+      const ba = byId(state.bodies, a.bodyId)?.internalName || "";
+      const bb = byId(state.bodies, b.bodyId)?.internalName || "";
+      return da.localeCompare(db) || ba.localeCompare(bb);
+    });
+
+  $("#pinkoiCards").innerHTML = cards.map(group => {
+    const body = byId(state.bodies, group.bodyId);
+    const design = byId(state.designs, group.designId);
+    const product = getPinkoiProduct(group.bodyId, group.designId);
+
+    const title = effectivePinkoiTitle(group.bodyId, group.designId);
+    const status = product?.status || "draft";
+    const price = product?.priceTwd ?? group.variants[0]?.priceTwd ?? 1200;
+    const productId = product?.pinkoiProductId || "未設定";
+
+    const colorGroups = new Map();
+
+    group.variants.forEach(v => {
+      if (!colorGroups.has(v.colorId)) colorGroups.set(v.colorId, []);
+      colorGroups.get(v.colorId).push(v);
+    });
+
+    const colorHtml = [...colorGroups.entries()].map(([colorId, vars]) => {
+      const color = byId(state.colors, colorId);
+      const bySize = new Map(vars.map(v => [String(v.size).toUpperCase(), v]));
+      const sizes = ["S", "M", "L", "XL", "XXL"];
+
+      const sizeText = sizes.map(size => {
+        const v = bySize.get(size);
+        if (!v) return `${size} —`;
+        return `${size} ${Number(v.stock || 0)} / P${Number(v.pinkoiStock || 0)}`;
+      }).join("   ");
+
       return `
-        <div class="variant-line">
-          <span>${esc(displayName(c,"en"))} / ${esc(v.size)}</span>
-          <span class="${need ? "status-warn" : ""}">${esc(v.sku || "")} · ${Number(v.pinkoiStock || 0)}</span>
-        </div>`;
+        <div class="pinkoi-color-row">
+          <strong>${esc(displayName(color, "en") || color?.internalName || "?")}</strong>
+          <span>${esc(sizeText)}</span>
+        </div>
+      `;
     }).join("");
+
     return `
-      <article class="pinkoi-card">
-        <h3>${esc(titleEn)}</h3>
-        <div class="muted">${esc(titleJa)}</div>
-        <div class="variant-lines">${variants}</div>
-      </article>`;
-  }).join("") || `<div class="muted">在庫データを登録するとPinkoi表示プレビューが出ます。</div>`;
+      <article class="pinkoi-product-card">
+        <div class="pinkoi-card-head">
+          <div>
+            <div class="pinkoi-manage-name">
+              ${esc(design?.internalName || "?")} / ${esc(body?.internalName || "?")}
+            </div>
+            <h3>${esc(title)}</h3>
+          </div>
+          <span class="pinkoi-status ${esc(status)}">${esc(pinkoiStatusLabel(status))}</span>
+        </div>
+
+        <div class="pinkoi-meta">
+          <span>ID: ${esc(productId)}</span>
+          <span>TWD ${Number(price || 0).toLocaleString()}</span>
+        </div>
+
+        <div class="pinkoi-color-list">
+          ${colorHtml}
+        </div>
+
+        <div class="pinkoi-card-actions">
+          <button class="button secondary small"
+                  data-edit-pinkoi-product
+                  data-body-id="${esc(group.bodyId)}"
+                  data-design-id="${esc(group.designId)}">
+            商品情報を編集
+          </button>
+        </div>
+      </article>
+    `;
+  }).join("") || `<div class="muted">Pinkoi商品がありません。</div>`;
 }
 
 async function adjustStock(id, delta) {
@@ -942,6 +1120,11 @@ function bindEvents() {
   $("#addVariantBtn").addEventListener("click", openBulkVariantDialog);
   $("#variantForm").addEventListener("submit", submitVariant);
   $("#bulkVariantForm").addEventListener("submit", submitBulkVariant);
+  $("#pinkoiProductForm").addEventListener("submit", submitPinkoiProduct);
+
+  $("#pinkoiSearchInput")?.addEventListener("input", renderPinkoi);
+  $("#pinkoiBodyFilter")?.addEventListener("change", renderPinkoi);
+  $("#pinkoiStatusFilter")?.addEventListener("change", renderPinkoi);
 
   $("#bulkBody").addEventListener("change", () => {
     renderBulkDesignOptions();
@@ -975,6 +1158,14 @@ function bindEvents() {
 
     const editVariant = e.target.closest("[data-edit-variant]");
     if (editVariant) return openVariant(editVariant.dataset.editVariant);
+
+    const editPinkoi = e.target.closest("[data-edit-pinkoi-product]");
+    if (editPinkoi) {
+      return openPinkoiProduct(
+        editPinkoi.dataset.bodyId,
+        editPinkoi.dataset.designId
+      );
+    }
 
     const addMaster = e.target.closest("[data-add-master]");
     if (addMaster) return openMaster(addMaster.dataset.addMaster);

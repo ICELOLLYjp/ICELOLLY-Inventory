@@ -195,3 +195,113 @@ dialog::backdrop { background: rgba(0,0,0,.32); }
   .size-head { min-width: 60px; }
   .size-stock-button { min-width: 50px; }
 }
+
+
+/* Pinkoi product management */
+.pinkoi-toolbar {
+  grid-template-columns: minmax(240px, 1fr) 180px 160px;
+}
+
+.pinkoi-product-card {
+  border: 1px solid #e8e8e3;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.pinkoi-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pinkoi-card-head h3 {
+  margin: 3px 0 0;
+  font-size: 17px;
+}
+
+.pinkoi-manage-name {
+  font-size: 11px;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.pinkoi-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #efefeb;
+}
+
+.pinkoi-status.selling {
+  background: #edf4ec;
+}
+
+.pinkoi-status.hidden {
+  background: #f0f0f0;
+  color: #777;
+}
+
+.pinkoi-status.draft {
+  background: #f7f1e8;
+}
+
+.pinkoi-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+  font-size: 12px;
+  color: #666;
+}
+
+.pinkoi-color-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.pinkoi-color-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 10px;
+  padding: 8px 9px;
+  background: #f8f8f5;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.pinkoi-color-row span {
+  color: #666;
+  line-height: 1.5;
+}
+
+.pinkoi-card-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.info-box {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f7f7f4;
+}
+
+@media (max-width: 700px) {
+  .pinkoi-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .pinkoi-color-row {
+    grid-template-columns: 1fr;
+  }
+}
