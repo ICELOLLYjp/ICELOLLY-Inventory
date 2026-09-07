@@ -268,13 +268,15 @@ function displayName(item, lang="en") {
 }
 
 function variantPriceJpy(v) {
-  return Number(v?.priceJpy ?? v?.priceTwd ?? 0);
+  // Legacy priceTwd values must never be treated as JPY.
+  return Number(v?.priceJpy ?? 0);
 }
 
 function productPriceJpy(p, fallbackVariant = null) {
+  // Pinkoi v2.1 template price is JPY.
+  // Do not fall back to old TWD values.
   return Number(
     p?.priceJpy ??
-    p?.priceTwd ??
     variantPriceJpy(fallbackVariant) ??
     0
   );
@@ -592,6 +594,32 @@ function pinkoiStatusLabel(status) {
   return "Draft";
 }
 
+function updateShippingLeadTimeUi(orderType, preserveValue = true) {
+  const type = orderType === "general" ? "general" : "madeToOrder";
+  const input = $("#pinkoiShipDays");
+  const label = $("#pinkoiShipDaysLabel");
+
+  if (type === "general") {
+    label.textContent = "一般注文 発送までの日数";
+    input.min = "0";
+    input.max = "5";
+    input.placeholder = "0〜5";
+
+    if (!preserveValue || Number(input.value) > 5 || Number(input.value) < 0 || input.value === "") {
+      input.value = "3";
+    }
+  } else {
+    label.textContent = "受注制作 発送までの日数";
+    input.min = "1";
+    input.max = "90";
+    input.placeholder = "1〜90";
+
+    if (!preserveValue || Number(input.value) < 1 || Number(input.value) > 90 || input.value === "") {
+      input.value = "14";
+    }
+  }
+}
+
 function openPinkoiProduct(bodyId, designId) {
   const body = byId(state.bodies, bodyId);
   const design = byId(state.designs, designId);
@@ -626,8 +654,17 @@ function openPinkoiProduct(bodyId, designId) {
   $("#pinkoiProductionMethod").value =
     product?.productionMethod || "工場生産";
 
-  $("#pinkoiOrigin").value = product?.origin || "";
-  $("#pinkoiShipDays").value = product?.shipDays ?? "";
+  const savedOrigin = product?.origin || "";
+  $("#pinkoiOrigin").value =
+    savedOrigin === "日本" || savedOrigin === "Japan" || !savedOrigin
+      ? "JP 日本"
+      : savedOrigin;
+
+  const orderType = product?.orderType === "general" ? "general" : "madeToOrder";
+  $("#pinkoiOrderType").value = orderType;
+  $("#pinkoiShipDays").value = product?.shipDays ?? (orderType === "general" ? 3 : 14);
+  updateShippingLeadTimeUi(orderType, true);
+
   $("#pinkoiMaterial").value = product?.material || "コットン";
   $("#pinkoiTarget").value = product?.target || "ユニセックス";
   $("#pinkoiShippingPlan").value = product?.shippingPlan || "Tシャツ発送";
@@ -672,7 +709,12 @@ async function submitPinkoiProduct(e) {
 
     category: $("#pinkoiCategory").value.trim(),
     productionMethod: $("#pinkoiProductionMethod").value,
-    origin: $("#pinkoiOrigin").value.trim(),
+    origin: (() => {
+      const value = $("#pinkoiOrigin").value.trim();
+      if (value === "日本" || value.toLowerCase() === "japan") return "JP 日本";
+      return value;
+    })(),
+    orderType: $("#pinkoiOrderType").value === "general" ? "general" : "madeToOrder",
     shipDays: $("#pinkoiShipDays").value === "" ? null : Number($("#pinkoiShipDays").value),
     material: $("#pinkoiMaterial").value.trim(),
     target: $("#pinkoiTarget").value,
@@ -802,6 +844,7 @@ function renderPinkoi() {
         <div class="pinkoi-meta">
           <span>ID: ${esc(productId)}</span>
           <span>JPY ${Number(price || 0).toLocaleString()}</span>
+          <span>${product?.orderType === "general" ? "一般注文" : "受注制作"} ${Number(product?.shipDays ?? (product?.orderType === "general" ? 3 : 14))}日</span>
         </div>
 
         <div class="pinkoi-color-list">
@@ -872,9 +915,42 @@ function validatePinkoiExport(groups) {
     if (!titleJa || titleJa.length < 3) problems.push(`${label}: 日本語の商品名が必要です。`);
     if (!product.category) problems.push(`${label}: 商品カテゴリーが必要です。`);
     if (!product.productionMethod) problems.push(`${label}: 制作方法が必要です。`);
-    if (!product.origin) problems.push(`${label}: 製造地が必要です。`);
-    if (product.shipDays === null || product.shipDays === undefined || product.shipDays === "") {
-      problems.push(`${label}: 発送までの日数が必要です。`);
+    if (!product.origin) {
+      problems.push(`${label}: 製造地が必要です。`);
+    } else if (product.origin === "日本" || product.origin.toLowerCase?.() === "japan") {
+      problems.push(`${label}: 製造地は「JP 日本」で保存してください。`);
+    }
+
+    if (!["ハンドメイド", "工場生産", "その他"].includes(product.productionMethod)) {
+      problems.push(`${label}: 制作方法を選択してください。`);
+    }
+
+    if (!["男性へ", "女性へ", "ユニセックス"].includes(product.target)) {
+      problems.push(`${label}: ターゲットを選択してください。`);
+    }
+    const orderType = product.orderType === "general" ? "general" : "madeToOrder";
+    const shipDays = Number(product.shipDays);
+
+    if (orderType === "general") {
+      if (
+        product.shipDays === null ||
+        product.shipDays === undefined ||
+        product.shipDays === "" ||
+        shipDays < 0 ||
+        shipDays > 5
+      ) {
+        problems.push(`${label}: 一般注文の発送までの日数は0〜5日で入力してください。`);
+      }
+    } else {
+      if (
+        product.shipDays === null ||
+        product.shipDays === undefined ||
+        product.shipDays === "" ||
+        shipDays < 1 ||
+        shipDays > 90
+      ) {
+        problems.push(`${label}: 受注制作の発送までの日数は1〜90日で入力してください。`);
+      }
     }
     if (!product.material) problems.push(`${label}: 素材が必要です。`);
     if (!product.target) problems.push(`${label}: ターゲットが必要です。`);
@@ -884,7 +960,27 @@ function validatePinkoiExport(groups) {
     if (!product.descriptionJa || product.descriptionJa.length < 15) {
       problems.push(`${label}: 日本語の商品説明を15文字以上入力してください。`);
     }
-    if (!price || price < 1) problems.push(`${label}: 価格 JPY が必要です。`);
+
+    variants.forEach(v => {
+      const color = byId(state.colors, v.colorId);
+      const size = String(v.size || "").trim();
+      const qty = Number(v.pinkoiStock ?? 0);
+
+      if (!color?.internalName) {
+        problems.push(`${label}: Colorが未設定の在庫があります。`);
+      }
+      if (!size) {
+        problems.push(`${label}: Sizeが未設定の在庫があります。`);
+      }
+      if (!Number.isFinite(qty) || qty < 0 || qty > 50000) {
+        problems.push(`${label}: Pinkoi在庫は0〜50000で入力してください。`);
+      }
+    });
+    if (!product.priceJpy || Number(product.priceJpy) < 1) {
+      problems.push(`${label}: 価格 JPY を商品情報で保存してください。旧TWD価格は使用しません。`);
+    } else if (Number(product.priceJpy) > 999999) {
+      problems.push(`${label}: 価格 JPY は999999円以下で入力してください。`);
+    }
   });
 
   return problems;
@@ -973,8 +1069,24 @@ async function exportPinkoiXlsx() {
           excelSetCell(ws, row, 5, titleJa);
           excelSetCell(ws, row, 6, product.category);
           excelSetCell(ws, row, 7, product.productionMethod);
-          excelSetCell(ws, row, 8, product.origin);
-          excelSetCell(ws, row, 9, Number(product.shipDays));
+          const exportOrigin =
+            product.origin === "日本" || product.origin?.toLowerCase?.() === "japan"
+              ? "JP 日本"
+              : product.origin;
+          excelSetCell(ws, row, 8, exportOrigin);
+
+          // Pinkoi template
+          // I = 一般注文 発送までの日数
+          // J = 受注制作 発送までの日数
+          const orderType = product.orderType === "general" ? "general" : "madeToOrder";
+
+          if (orderType === "general") {
+            excelSetCell(ws, row, 9, Number(product.shipDays ?? 3));
+            excelSetCell(ws, row, 10, "");
+          } else {
+            excelSetCell(ws, row, 9, "");
+            excelSetCell(ws, row, 10, Number(product.shipDays ?? 14));
+          }
         }
 
         // Exact sales color names use custom specification.
@@ -1438,6 +1550,10 @@ function bindEvents() {
   $("#pinkoiBodyFilter")?.addEventListener("change", renderPinkoi);
   $("#pinkoiStatusFilter")?.addEventListener("change", renderPinkoi);
   $("#exportPinkoiXlsxBtn")?.addEventListener("click", exportPinkoiXlsx);
+
+  $("#pinkoiOrderType")?.addEventListener("change", e => {
+    updateShippingLeadTimeUi(e.target.value, false);
+  });
 
   $("#bulkBody").addEventListener("change", () => {
     renderBulkDesignOptions();
