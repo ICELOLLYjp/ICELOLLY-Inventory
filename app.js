@@ -89,21 +89,21 @@ const ICELOLLY_DEFAULTS = {
   }),
 
   colors: [
-    { internalName: "Natural", code: "NAT", displayName: { ja: "Natural", en: "Natural", zhTW: "Natural" } },
-    { internalName: "Black", code: "BLK", displayName: { ja: "Black", en: "Black", zhTW: "Black" } },
-    { internalName: "Green", code: "GRN", displayName: { ja: "Green", en: "Green", zhTW: "Green" } },
-    { internalName: "Light Purple", code: "LPR", displayName: { ja: "Light Purple", en: "Light Purple", zhTW: "Light Purple" } },
-    { internalName: "Pink", code: "PNK", displayName: { ja: "Pink", en: "Pink", zhTW: "Pink" } },
-    { internalName: "Beige Grey", code: "BGR", displayName: { ja: "Beige Grey", en: "Beige Grey", zhTW: "Beige Grey" } },
+    { internalName: "Natural", code: "NAT", displayName: { ja: "Natural", en: "Natural", zhTW: "Natural" }, allowedBodyNames: ["Organic"] },
+    { internalName: "Black", code: "BLK", displayName: { ja: "Black", en: "Black", zhTW: "Black" }, allowedBodyNames: ["Organic"] },
+    { internalName: "Green", code: "GRN", displayName: { ja: "Green", en: "Green", zhTW: "Green" }, allowedBodyNames: ["Organic"] },
+    { internalName: "Light Purple", code: "LPR", displayName: { ja: "Light Purple", en: "Light Purple", zhTW: "Light Purple" }, allowedBodyNames: ["Organic"] },
+    { internalName: "Pink", code: "PNK", displayName: { ja: "Pink", en: "Pink", zhTW: "Pink" }, allowedBodyNames: ["Organic"] },
+    { internalName: "Beige Grey", code: "BGR", displayName: { ja: "Beige Grey", en: "Beige Grey", zhTW: "Beige Grey" }, allowedBodyNames: ["Organic"] },
 
-    { internalName: "Vintage Black", code: "VBLK", displayName: { ja: "Vintage Black", en: "Vintage Black", zhTW: "Vintage Black" } },
-    { internalName: "Vintage Navy", code: "VNVY", displayName: { ja: "Vintage Navy", en: "Vintage Navy", zhTW: "Vintage Navy" } },
-    { internalName: "Vintage Light Grey", code: "VLGR", displayName: { ja: "Vintage Light Grey", en: "Vintage Light Grey", zhTW: "Vintage Light Grey" } },
-    { internalName: "Vintage Purple", code: "VPUR", displayName: { ja: "Vintage Purple", en: "Vintage Purple", zhTW: "Vintage Purple" } },
+    { internalName: "Vintage Black", code: "VBLK", displayName: { ja: "Vintage Black", en: "Vintage Black", zhTW: "Vintage Black" }, allowedBodyNames: ["Vintage"] },
+    { internalName: "Vintage Navy", code: "VNVY", displayName: { ja: "Vintage Navy", en: "Vintage Navy", zhTW: "Vintage Navy" }, allowedBodyNames: ["Vintage"] },
+    { internalName: "Vintage Light Grey", code: "VLGR", displayName: { ja: "Vintage Light Grey", en: "Vintage Light Grey", zhTW: "Vintage Light Grey" }, allowedBodyNames: ["Vintage"] },
+    { internalName: "Vintage Purple", code: "VPUR", displayName: { ja: "Vintage Purple", en: "Vintage Purple", zhTW: "Vintage Purple" }, allowedBodyNames: ["Vintage"] },
 
-    { internalName: "Black JP", code: "JP_BLK", displayName: { ja: "Black", en: "Black", zhTW: "Black" } },
-    { internalName: "White JP", code: "JP_WHT", displayName: { ja: "White", en: "White", zhTW: "White" } },
-    { internalName: "Grey JP", code: "JP_GRY", displayName: { ja: "Grey", en: "Grey", zhTW: "Grey" } }
+    { internalName: "Black JP", code: "JP_BLK", displayName: { ja: "Black", en: "Black", zhTW: "Black" }, allowedBodyNames: ["MIJ"] },
+    { internalName: "White JP", code: "JP_WHT", displayName: { ja: "White", en: "White", zhTW: "White" }, allowedBodyNames: ["MIJ"] },
+    { internalName: "Grey JP", code: "JP_GRY", displayName: { ja: "Grey", en: "Grey", zhTW: "Grey" }, allowedBodyNames: ["MIJ"] }
   ]
 };
 
@@ -316,15 +316,30 @@ function renderVariantDesignOptions(selectedDesignId = "") {
   }
 }
 
+function defaultColorBodies(color) {
+  const matches = [];
+  for (const [bodyName, colorNames] of Object.entries(BODY_COLOR_RULES)) {
+    if (colorNames.includes(color?.internalName)) matches.push(bodyName);
+  }
+  return matches;
+}
+
 function allowedColorsForBody(bodyId) {
   const body = byId(state.bodies, bodyId);
   if (!body) return state.colors;
 
-  const allowedNames = BODY_COLOR_RULES[body.internalName];
-  if (!allowedNames) return state.colors;
+  return state.colors.filter(c => {
+    if (Array.isArray(c.allowedBodyNames) && c.allowedBodyNames.length > 0) {
+      return c.allowedBodyNames.includes(body.internalName);
+    }
 
-  const allowed = new Set(allowedNames);
-  return state.colors.filter(c => allowed.has(c.internalName));
+    const defaults = defaultColorBodies(c);
+    if (defaults.length > 0) {
+      return defaults.includes(body.internalName);
+    }
+
+    return true;
+  });
 }
 
 function renderVariantColorOptions(selectedColorId = "") {
@@ -437,6 +452,14 @@ function renderMasters() {
           ${type === "design" && Array.isArray(x.allowedBodyNames) && x.allowedBodyNames.length
             ? `<small>${esc(x.allowedBodyNames.join(" / "))}</small>`
             : ""}
+          ${type === "color"
+            ? `<small>${esc(
+                (Array.isArray(x.allowedBodyNames) && x.allowedBodyNames.length
+                  ? x.allowedBodyNames
+                  : (defaultColorBodies(x).length ? defaultColorBodies(x) : ["Organic", "Vintage", "MIJ"])
+                ).join(" / ")
+              )}</small>`
+            : ""}
         </div>
         <div>
           <button class="link-button" data-edit-master="${type}" data-id="${esc(x.id)}">編集</button>
@@ -534,7 +557,7 @@ function openMaster(type, id=null) {
   $("#masterZh").value = item?.displayName?.zhTW || "";
 
   const designBodiesField = $("#designBodiesField");
-  const checks = $$(".design-body-check");
+  const designChecks = $$(".design-body-check");
   designBodiesField.classList.toggle("hidden", type !== "design");
 
   if (type === "design") {
@@ -542,7 +565,27 @@ function openMaster(type, id=null) {
       ? new Set(item.allowedBodyNames)
       : new Set(["Organic", "Vintage", "MIJ"]);
 
-    checks.forEach(ch => {
+    designChecks.forEach(ch => {
+      ch.checked = selected.has(ch.value);
+    });
+  }
+
+  const colorBodiesField = $("#colorBodiesField");
+  const colorChecks = $$(".color-body-check");
+  colorBodiesField.classList.toggle("hidden", type !== "color");
+
+  if (type === "color") {
+    let selectedNames;
+
+    if (Array.isArray(item?.allowedBodyNames) && item.allowedBodyNames.length) {
+      selectedNames = item.allowedBodyNames;
+    } else {
+      const defaults = defaultColorBodies(item);
+      selectedNames = defaults.length ? defaults : ["Organic", "Vintage", "MIJ"];
+    }
+
+    const selected = new Set(selectedNames);
+    colorChecks.forEach(ch => {
       ch.checked = selected.has(ch.value);
     });
   }
@@ -569,6 +612,12 @@ async function submitMaster(e) {
 
   if (type === "design") {
     item.allowedBodyNames = $$(".design-body-check")
+      .filter(ch => ch.checked)
+      .map(ch => ch.value);
+  }
+
+  if (type === "color") {
+    item.allowedBodyNames = $$(".color-body-check")
       .filter(ch => ch.checked)
       .map(ch => ch.value);
   }
