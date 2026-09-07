@@ -4,14 +4,14 @@ export const APP_CONFIG = {
   // false: Firebase Authentication + Firestore
   demoMode: false,
 
-  firebase: {
-    apiKey: "REPLACE_ME",
-    authDomain: "REPLACE_ME.firebaseapp.com",
-    projectId: "REPLACE_ME",
-    storageBucket: "REPLACE_ME.firebasestorage.app",
-    messagingSenderId: "REPLACE_ME",
-    appId: "REPLACE_ME"
-  },
+firebase: {
+  apiKey: "以前と同じもの",
+  authDomain: "t-shirtstock.firebaseapp.com",
+  projectId: "t-shirtstock",
+  storageBucket: "t-shirtstock.firebasestorage.app",
+  messagingSenderId: "485805702075",
+  appId: "1:485805702075:web:f9d8668ca57d9f58c4229e"
+},
 
   sizes: ["S", "M", "L", "XL", "XXL"],
 
