@@ -604,6 +604,12 @@ async function reconcileLegacyStockToPinkoi(force = false) {
           const colorMaster = canonicalMasterByName(state.colors, canonicalColorName);
           if (!colorMaster) continue;
 
+          const disabledInventoryKey = `${bodyName}__${canonicalColorName}`;
+          if (Array.isArray(designMaster.disabledInventoryKeys) &&
+              designMaster.disabledInventoryKeys.includes(disabledInventoryKey)) {
+            continue;
+          }
+
           for (const size of PINKOI_TSHIRT_SIZES) {
             const legacyStock = Number(legacyDesign.stock?.[legacyColorName]?.[size] ?? 0);
 
@@ -753,7 +759,7 @@ let firebaseApi = null;
 let unsubscribers = [];
 let XLSXLib = null;
 let selectedPinkoiProductKeys = new Set();
-let selectedInventoryProductKeys = new Set();
+let selectedInventoryColorKeys = new Set();
 
 // Firestore上ではPinkoi専用コレクションを使います。
 // 既存のTシャツ在庫と同じFirebaseプロジェクトを使ってもデータは混ざりません。
@@ -1113,74 +1119,109 @@ function filteredInventory() {
 }
 
 
-function inventoryProductKey(bodyId, designId) {
-  return `${bodyId}__${designId}`;
+
+function inventoryColorKey(bodyId, designId, colorId) {
+  return `${bodyId}__${designId}__${colorId}`;
 }
 
-function inventoryProductParts(key) {
-  const [bodyId, designId] = String(key || "").split("__");
-  return { bodyId, designId };
+function inventoryColorParts(key) {
+  const [bodyId, designId, colorId] = String(key || "").split("__");
+  return { bodyId, designId, colorId };
 }
 
-function visibleInventoryProductKeys() {
+function visibleInventoryColorKeys() {
   const keys = new Set();
-  filteredInventory().forEach(v => keys.add(inventoryProductKey(v.bodyId, v.designId)));
+  filteredInventory().forEach(v => {
+    keys.add(inventoryColorKey(v.bodyId, v.designId, v.colorId));
+  });
   return [...keys];
 }
 
 function updateInventorySelectionCount() {
   const el = $("#inventorySelectedCount");
-  if (el) el.textContent = selectedInventoryProductKeys.size;
+  if (el) el.textContent = selectedInventoryColorKeys.size;
 }
 
 function selectVisibleInventoryProducts() {
-  visibleInventoryProductKeys().forEach(key => selectedInventoryProductKeys.add(key));
+  visibleInventoryColorKeys().forEach(key => selectedInventoryColorKeys.add(key));
   updateInventorySelectionCount();
   renderInventory();
 }
 
 function clearInventorySelection() {
-  selectedInventoryProductKeys.clear();
+  selectedInventoryColorKeys.clear();
   updateInventorySelectionCount();
   renderInventory();
 }
 
-async function clearDesignBodyDeletionBlock(bodyId, designId) {
+async function clearInventoryDeletionBlock(bodyId, designId, colorId) {
   const design = byId(state.designs, designId);
   const body = byId(state.bodies, bodyId);
-  if (!design || !body) return;
+  const color = byId(state.colors, colorId);
+  if (!design || !body || !color) return;
 
-  const disabled = Array.isArray(design.disabledBodyNames)
-    ? [...design.disabledBodyNames]
-    : [];
+  const bodyName = body.internalName;
+  const colorName = color.internalName;
+  const currentKey = `${bodyName}__${colorName}`;
 
-  if (!disabled.includes(body.internalName)) return;
+  const disabledBodies = new Set(
+    Array.isArray(design.disabledBodyNames) ? design.disabledBodyNames : []
+  );
+  const disabledKeys = new Set(
+    Array.isArray(design.disabledInventoryKeys) ? design.disabledInventoryKeys : []
+  );
 
-  const next = disabled.filter(name => name !== body.internalName);
+  let changed = false;
+
+  // Compatibility with the previous Design × Body deletion version.
+  // If that older block exists, convert it to color-level blocks so only the
+  // color being manually restored becomes active again.
+  if (disabledBodies.has(bodyName)) {
+    disabledBodies.delete(bodyName);
+
+    Object.keys(LEGACY_TSHIRT_COLOR_MAP[bodyName] || {}).forEach(name => {
+      disabledKeys.add(`${bodyName}__${name}`);
+    });
+
+    changed = true;
+  }
+
+  if (disabledKeys.delete(currentKey)) {
+    changed = true;
+  }
+
+  if (!changed) return;
+
+  const payload = {
+    disabledBodyNames: [...disabledBodies],
+    disabledInventoryKeys: [...disabledKeys],
+    updatedAt: new Date().toISOString()
+  };
 
   if (APP_CONFIG.demoMode) {
-    design.disabledBodyNames = next;
+    design.disabledBodyNames = payload.disabledBodyNames;
+    design.disabledInventoryKeys = payload.disabledInventoryKeys;
     localSave();
     return;
   }
 
   await firebaseApi.setDoc(
     firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.designs, design.id),
-    {
-      disabledBodyNames: next,
-      updatedAt: new Date().toISOString()
-    },
+    payload,
     { merge: true }
   );
 
-  design.disabledBodyNames = next;
+  design.disabledBodyNames = payload.disabledBodyNames;
+  design.disabledInventoryKeys = payload.disabledInventoryKeys;
 }
 
 function selectedInventoryVariants() {
-  if (!selectedInventoryProductKeys.size) return [];
+  if (!selectedInventoryColorKeys.size) return [];
 
   return state.inventory.filter(v =>
-    selectedInventoryProductKeys.has(inventoryProductKey(v.bodyId, v.designId))
+    selectedInventoryColorKeys.has(
+      inventoryColorKey(v.bodyId, v.designId, v.colorId)
+    )
   );
 }
 
@@ -1188,13 +1229,13 @@ async function bulkSetSelectedPinkoiStock(mode) {
   const variants = selectedInventoryVariants();
 
   if (!variants.length) {
-    alert("処理するDesignを選択してください。");
+    alert("処理するDesign × Colorを選択してください。");
     return;
   }
 
   const label = mode === "zero"
-    ? "選択商品のPinkoi在庫をすべて0にしますか？"
-    : "選択商品のPinkoi在庫を実在庫と同じ数に揃えますか？";
+    ? "選択したDesign × ColorのPinkoi在庫をすべて0にしますか？"
+    : "選択したDesign × ColorのPinkoi在庫を実在庫と同じ数に揃えますか？";
 
   if (!confirm(label)) return;
 
@@ -1208,6 +1249,7 @@ async function bulkSetSelectedPinkoiStock(mode) {
       v.updatedAt = new Date().toISOString();
       changed++;
     }
+
     localSave();
     render();
     showToast(`${changed}件のPinkoi在庫を更新しました`);
@@ -1234,96 +1276,117 @@ async function bulkSetSelectedPinkoiStock(mode) {
   }
 
   if (writes.length) await Promise.all(writes);
-
   showToast(`${changed}件のPinkoi在庫を更新しました`);
 }
 
 async function deleteSelectedInventoryProducts() {
-  if (!selectedInventoryProductKeys.size) {
-    alert("削除するDesignを選択してください。");
+  if (!selectedInventoryColorKeys.size) {
+    alert("削除するDesign × Colorを選択してください。");
     return;
   }
 
-  const selected = [...selectedInventoryProductKeys].map(key => ({
+  const selected = [...selectedInventoryColorKeys].map(key => ({
     key,
-    ...inventoryProductParts(key)
+    ...inventoryColorParts(key)
   }));
 
-  const labels = selected.map(({ bodyId, designId }) => {
+  const labels = selected.map(({ bodyId, designId, colorId }) => {
     const body = byId(state.bodies, bodyId)?.internalName || "?";
     const design = byId(state.designs, designId)?.internalName || "?";
-    return `${design} / ${body}`;
+    const color = byId(state.colors, colorId)?.internalName || "?";
+    return `${design} / ${color} / ${body}`;
   });
 
   const ok = confirm(
-    `選択した ${selected.length} 商品をPinkoi Inventoryから削除します。\n\n` +
-    `${labels.slice(0, 8).join("\n")}${labels.length > 8 ? "\n…" : ""}\n\n` +
-    `在庫データとPinkoi商品情報を削除します。\n` +
+    `選択した ${selected.length} 件のDesign × Colorを削除します。\n\n` +
+    `${labels.slice(0, 10).join("\n")}${labels.length > 10 ? "\n…" : ""}\n\n` +
+    `選択カラーの全サイズ在庫をPinkoi Inventoryから削除します。\n` +
+    `同じDesignに他のカラーが残っている場合、Pinkoi商品情報は残します。\n` +
     `旧Tシャツ在庫アプリの実在庫は削除しません。\n` +
     `Pinkoiサイト本体の商品も削除されません。`
   );
   if (!ok) return;
 
-  if (APP_CONFIG.demoMode) {
-    const selectedSet = new Set(selected.map(x => x.key));
-
-    for (const { bodyId, designId } of selected) {
-      const body = byId(state.bodies, bodyId);
-      const design = byId(state.designs, designId);
-      if (body && design) {
-        const disabled = new Set(design.disabledBodyNames || []);
-        disabled.add(body.internalName);
-        design.disabledBodyNames = [...disabled];
-      }
-    }
-
-    state.inventory = state.inventory.filter(v =>
-      !selectedSet.has(inventoryProductKey(v.bodyId, v.designId))
-    );
-    state.pinkoiProducts = state.pinkoiProducts.filter(p =>
-      !selectedSet.has(inventoryProductKey(p.bodyId, p.designId))
-    );
-
-    selectedInventoryProductKeys.clear();
-    localSave();
-    render();
-    showToast(`${selected.length}商品を削除しました`);
-    return;
-  }
-
-  // First block legacy auto-recreation for the selected Design × Body groups.
-  for (const { bodyId, designId } of selected) {
-    const body = byId(state.bodies, bodyId);
-    const design = byId(state.designs, designId);
-    if (!body || !design) continue;
-
-    const disabled = new Set(
-      Array.isArray(design.disabledBodyNames) ? design.disabledBodyNames : []
-    );
-    disabled.add(body.internalName);
-    const next = [...disabled];
-
-    await firebaseApi.setDoc(
-      firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.designs, design.id),
-      {
-        disabledBodyNames: next,
-        updatedAt: new Date().toISOString()
-      },
-      { merge: true }
-    );
-
-    design.disabledBodyNames = next;
-  }
-
   const selectedSet = new Set(selected.map(x => x.key));
 
-  const inventoryToDelete = state.inventory.filter(v =>
-    selectedSet.has(inventoryProductKey(v.bodyId, v.designId))
+  const shouldDeleteVariant = v =>
+    selectedSet.has(inventoryColorKey(v.bodyId, v.designId, v.colorId));
+
+  // Save color-level sync exclusions first so the old inventory app cannot
+  // recreate the deleted combinations.
+  const designUpdates = new Map();
+
+  for (const { bodyId, designId, colorId } of selected) {
+    const body = byId(state.bodies, bodyId);
+    const design = byId(state.designs, designId);
+    const color = byId(state.colors, colorId);
+    if (!body || !design || !color) continue;
+
+    if (!designUpdates.has(designId)) {
+      designUpdates.set(designId, {
+        design,
+        disabledBodyNames: new Set(
+          Array.isArray(design.disabledBodyNames) ? design.disabledBodyNames : []
+        ),
+        disabledInventoryKeys: new Set(
+          Array.isArray(design.disabledInventoryKeys) ? design.disabledInventoryKeys : []
+        )
+      });
+    }
+
+    designUpdates.get(designId).disabledInventoryKeys.add(
+      `${body.internalName}__${color.internalName}`
+    );
+  }
+
+  const remainingInventory = state.inventory.filter(v => !shouldDeleteVariant(v));
+
+  // pinkoiProducts is a Body × Design record, so delete that record only when
+  // the last color for that Body × Design has been removed.
+  const productKeysWithRemainingVariants = new Set(
+    remainingInventory.map(v => `${v.bodyId}__${v.designId}`)
   );
 
   const productsToDelete = state.pinkoiProducts.filter(p =>
-    selectedSet.has(inventoryProductKey(p.bodyId, p.designId))
+    !productKeysWithRemainingVariants.has(`${p.bodyId}__${p.designId}`) &&
+    selected.some(x => x.bodyId === p.bodyId && x.designId === p.designId)
   );
+
+  if (APP_CONFIG.demoMode) {
+    for (const update of designUpdates.values()) {
+      update.design.disabledBodyNames = [...update.disabledBodyNames];
+      update.design.disabledInventoryKeys = [...update.disabledInventoryKeys];
+    }
+
+    state.inventory = remainingInventory;
+    const deleteIds = new Set(productsToDelete.map(p => p.id));
+    state.pinkoiProducts = state.pinkoiProducts.filter(p => !deleteIds.has(p.id));
+
+    selectedInventoryColorKeys.clear();
+    localSave();
+    render();
+    showToast(`${selected.length}件のDesign × Colorを削除しました`);
+    return;
+  }
+
+  for (const [designId, update] of designUpdates.entries()) {
+    const payload = {
+      disabledBodyNames: [...update.disabledBodyNames],
+      disabledInventoryKeys: [...update.disabledInventoryKeys],
+      updatedAt: new Date().toISOString()
+    };
+
+    await firebaseApi.setDoc(
+      firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.designs, designId),
+      payload,
+      { merge: true }
+    );
+
+    update.design.disabledBodyNames = payload.disabledBodyNames;
+    update.design.disabledInventoryKeys = payload.disabledInventoryKeys;
+  }
+
+  const inventoryToDelete = state.inventory.filter(shouldDeleteVariant);
 
   const deletions = [
     ...inventoryToDelete.map(v =>
@@ -1340,9 +1403,9 @@ async function deleteSelectedInventoryProducts() {
 
   if (deletions.length) await Promise.all(deletions);
 
-  selectedInventoryProductKeys.clear();
+  selectedInventoryColorKeys.clear();
   updateInventorySelectionCount();
-  showToast(`${selected.length}商品を削除しました`);
+  showToast(`${selected.length}件のDesign × Colorを削除しました`);
 }
 
 function renderInventory() {
@@ -1357,15 +1420,13 @@ function renderInventory() {
     return;
   }
 
-  // First group by Body × Design so the checkbox represents one product.
   const productGroups = new Map();
 
   for (const v of variants) {
-    const productKey = inventoryProductKey(v.bodyId, v.designId);
+    const productKey = `${v.bodyId}__${v.designId}`;
 
     if (!productGroups.has(productKey)) {
       productGroups.set(productKey, {
-        key: productKey,
         bodyId: v.bodyId,
         designId: v.designId,
         colors: new Map()
@@ -1378,7 +1439,10 @@ function renderInventory() {
       product.colors.set(v.colorId, new Map());
     }
 
-    product.colors.get(v.colorId).set(String(v.size || "").toUpperCase(), v);
+    product.colors.get(v.colorId).set(
+      String(v.size || "").toUpperCase(),
+      v
+    );
   }
 
   const products = [...productGroups.values()].sort((a, b) => {
@@ -1414,6 +1478,12 @@ function renderInventory() {
 
     colorRows.forEach(([colorId, variantsBySize], index) => {
       const color = byId(state.colors, colorId);
+      const selectionKey = inventoryColorKey(
+        product.bodyId,
+        product.designId,
+        colorId
+      );
+      const selected = selectedInventoryColorKeys.has(selectionKey);
 
       const sizeCells = sizes.map(size => {
         const v = variantsBySize.get(size);
@@ -1438,27 +1508,21 @@ function renderInventory() {
         `;
       }).join("");
 
-      const firstCells = index === 0
-        ? `
-          <td class="inventory-select-cell" rowspan="${colorRows.length}">
+      html.push(`
+        <tr class="${selected ? "inventory-row-selected" : ""}">
+          <td class="inventory-select-cell">
             <input
               class="inventory-design-checkbox"
               type="checkbox"
               data-select-inventory-product
-              data-key="${esc(product.key)}"
-              ${selectedInventoryProductKeys.has(product.key) ? "checked" : ""}
-              aria-label="${esc(design?.internalName || "Design")}を選択"
+              data-key="${esc(selectionKey)}"
+              ${selected ? "checked" : ""}
+              aria-label="${esc(design?.internalName || "Design")} / ${esc(color?.internalName || "Color")}を選択"
             >
           </td>
-          <td class="design-cell" rowspan="${colorRows.length}">
-            ${esc(design?.internalName || "?")}
-          </td>
-        `
-        : "";
-
-      html.push(`
-        <tr class="${selectedInventoryProductKeys.has(product.key) ? "inventory-row-selected" : ""}">
-          ${firstCells}
+          ${index === 0
+            ? `<td class="design-cell" rowspan="${colorRows.length}">${esc(design?.internalName || "?")}</td>`
+            : ""}
           <td class="color-cell">${esc(color?.internalName || "?")}</td>
           ${sizeCells}
         </tr>
@@ -1901,8 +1965,6 @@ async function submitProductInventory(e) {
   const design = byId(state.designs, designId);
   let saved = 0;
 
-  await clearDesignBodyDeletionBlock(bodyId, designId);
-
   for (const cell of $$("#productInventoryRows .product-stock-cell")) {
     const colorId = cell.dataset.colorId;
     const size = cell.dataset.size;
@@ -1917,6 +1979,8 @@ async function submitProductInventory(e) {
     );
 
     if (!existing && stock === 0 && pinkoiStock === 0) continue;
+
+    await clearInventoryDeletionBlock(bodyId, designId, colorId);
 
     const color = byId(state.colors, colorId);
     const sku = existing?.sku ||
@@ -2743,7 +2807,7 @@ async function submitBulkVariant(e) {
     return;
   }
 
-  await clearDesignBodyDeletionBlock(bodyId, designId);
+  await clearInventoryDeletionBlock(bodyId, designId, colorId);
 
   const rows = $$("#bulkSizeRows tr");
   let saved = 0;
@@ -2803,14 +2867,15 @@ async function submitVariant(e) {
   e.preventDefault();
   const bodyId = $("#variantBody").value;
   const designId = $("#variantDesign").value;
+  const colorId = $("#variantColor").value;
 
-  await clearDesignBodyDeletionBlock(bodyId, designId);
+  await clearInventoryDeletionBlock(bodyId, designId, colorId);
 
   const item = {
     id: $("#variantId").value || slug(),
     bodyId,
     designId,
-    colorId: $("#variantColor").value,
+    colorId,
     size: normalizePinkoiTshirtSize($("#variantSize").value),
     sku: $("#variantSku").value.trim(),
     stock: Number($("#variantStock").value || 0),
@@ -3064,8 +3129,8 @@ function bindEvents() {
       const key = inventoryCheckbox.dataset.key;
       if (!key) return;
 
-      if (inventoryCheckbox.checked) selectedInventoryProductKeys.add(key);
-      else selectedInventoryProductKeys.delete(key);
+      if (inventoryCheckbox.checked) selectedInventoryColorKeys.add(key);
+      else selectedInventoryColorKeys.delete(key);
 
       updateInventorySelectionCount();
       renderInventory();
