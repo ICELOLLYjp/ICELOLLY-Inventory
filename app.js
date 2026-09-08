@@ -525,15 +525,160 @@ function canonicalMasterByName(list, internalName) {
 }
 
 function legacyDesignKeyForCanonical(canonicalName) {
-  const alias = LEGACY_TSHIRT_DESIGN_MAP[canonicalName];
-  if (!alias) return null;
+  const designMaster = state.designs.find(
+    d => normalizeName(d.internalName) === normalizeName(canonicalName)
+  );
+
+  const alias =
+    designMaster?.legacyName?.trim() ||
+    LEGACY_TSHIRT_DESIGN_MAP[canonicalName] ||
+    canonicalName;
 
   // If a canonical key already exists in the legacy document, prefer it.
-  // Otherwise use the known legacy alias so the old app stays compatible.
+  // Otherwise use the stored/known legacy alias.
   if (legacyStockState.designs?.[canonicalName]) return canonicalName;
   if (legacyStockState.designs?.[alias]) return alias;
-  return alias;
+
+  const matchedKey = Object.keys(legacyStockState.designs || {}).find(
+    key => normalizeName(key) === normalizeName(alias)
+  );
+
+  return matchedKey || alias || null;
 }
+
+function canonicalDesignForLegacyName(legacyName) {
+  const legacyNorm = normalizeName(legacyName);
+
+  const direct = state.designs.find(d =>
+    normalizeName(d.legacyName) === legacyNorm ||
+    normalizeName(d.internalName) === legacyNorm
+  );
+  if (direct) return direct;
+
+  for (const [canonicalName, alias] of Object.entries(LEGACY_TSHIRT_DESIGN_MAP)) {
+    if (normalizeName(alias) === legacyNorm) {
+      return state.designs.find(
+        d => normalizeName(d.internalName) === normalizeName(canonicalName)
+      ) || null;
+    }
+  }
+
+  return null;
+}
+
+function missingLegacyDesignNames() {
+  if (!legacyStockState.ready) return [];
+
+  return Object.keys(legacyStockState.designs || {})
+    .filter(name => !canonicalDesignForLegacyName(name))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function makeDesignCode(name) {
+  const cleaned = cleanSkuPart(name);
+  if (!cleaned) return "DESIGN";
+
+  const parts = cleaned.split("_").filter(Boolean);
+  const code = parts.length > 1
+    ? parts.map(x => x.slice(0, 3)).join("_")
+    : cleaned.slice(0, 10);
+
+  return code || "DESIGN";
+}
+
+function renderMissingLegacyDesigns() {
+  const target = $("#legacyMissingDesigns");
+  if (!target) return;
+
+  if (!state.user) {
+    target.innerHTML = `<div class="muted">ログインすると旧Tシャツ在庫と比較します。</div>`;
+    return;
+  }
+
+  if (!legacyStockState.ready) {
+    target.innerHTML = `<div class="muted">旧Tシャツ在庫を読み込み中…</div>`;
+    return;
+  }
+
+  const missing = missingLegacyDesignNames();
+
+  if (!missing.length) {
+    target.innerHTML = `<div class="muted">未登録Designはありません。</div>`;
+    return;
+  }
+
+  target.innerHTML = missing.map((legacyName, i) => `
+    <div class="legacy-design-import-row">
+      <div class="legacy-design-source">
+        <small>旧Tシャツ在庫</small>
+        <strong>${esc(legacyName)}</strong>
+      </div>
+
+      <label class="legacy-design-name-field">
+        <small>Pinkoi正規名</small>
+        <input
+          id="legacyDesignName_${i}"
+          data-legacy-design-name="${esc(legacyName)}"
+          value="${esc(legacyName)}"
+        >
+      </label>
+
+      <button
+        class="button small"
+        type="button"
+        data-import-legacy-design="${esc(legacyName)}"
+        data-input-id="legacyDesignName_${i}"
+      >
+        追加
+      </button>
+    </div>
+  `).join("");
+}
+
+async function importLegacyDesign(legacyName, canonicalName) {
+  const cleanCanonical = String(canonicalName || "").trim();
+
+  if (!cleanCanonical) {
+    alert("Pinkoi側の正規名を入力してください。");
+    return;
+  }
+
+  const existing = state.designs.find(
+    d => normalizeName(d.internalName) === normalizeName(cleanCanonical)
+  );
+
+  if (existing) {
+    const update = {
+      ...existing,
+      legacyName,
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveCollectionItem("designs", update);
+    showToast(`${cleanCanonical} に旧在庫名を紐付けました`);
+    return;
+  }
+
+  const item = {
+    id: stableMasterId("design", cleanCanonical),
+    internalName: cleanCanonical,
+    code: makeDesignCode(cleanCanonical),
+    displayName: {
+      ja: cleanCanonical,
+      en: cleanCanonical,
+      zhTW: cleanCanonical
+    },
+    // Old T-shirt inventory contains Organic/Vintage stock.
+    // MIJ can be enabled later from the Design master editor if needed.
+    allowedBodyNames: ["Organic", "Vintage"],
+    legacyName,
+    updatedAt: new Date().toISOString()
+  };
+
+  await saveCollectionItem("designs", item);
+  showToast(`${cleanCanonical} を追加しました`);
+}
+
 
 function legacyMappingForInventoryItem(item) {
   const body = byId(state.bodies, item?.bodyId);
@@ -592,10 +737,8 @@ async function reconcileLegacyStockToPinkoi(force = false) {
     const writes = [];
     let changed = 0;
 
-    for (const [canonicalDesignName] of Object.entries(LEGACY_TSHIRT_DESIGN_MAP)) {
-      const designMaster = canonicalMasterByName(state.designs, canonicalDesignName);
-      if (!designMaster) continue;
-
+    for (const designMaster of state.designs) {
+      const canonicalDesignName = designMaster.internalName;
       const legacyDesignKey = legacyDesignKeyForCanonical(canonicalDesignName);
       const legacyDesign = legacyStockState.designs?.[legacyDesignKey];
       if (!legacyDesign) continue;
@@ -739,6 +882,7 @@ function startLegacyStockRealtime() {
     legacyStockState.designs = snap.data()?.designs || {};
     legacyStockState.ready = true;
     legacyStockState.error = "";
+    renderMissingLegacyDesigns();
     scheduleLegacyStockReconcile(80);
   }, err => {
     console.error("legacy tshirt stock snapshot failed", err);
@@ -1859,6 +2003,9 @@ function renderMasters() {
         <div>
           <strong>${esc(x.internalName)} ${x.code ? `<small>${esc(x.code)}</small>` : ""}</strong>
           <small>${esc(displayName(x,"en"))}</small>
+          ${type === "design" && x.legacyName
+            ? `<small>旧在庫: ${esc(x.legacyName)}</small>`
+            : ""}
           ${type === "design" && Array.isArray(x.allowedBodyNames) && x.allowedBodyNames.length
             ? `<small>${esc(x.allowedBodyNames.join(" / "))}</small>`
             : ""}
@@ -1880,6 +2027,7 @@ function renderMasters() {
   renderList("body", state.bodies, "#bodyList");
   renderList("design", state.designs, "#designList");
   renderList("color", state.colors, "#colorList");
+  renderMissingLegacyDesigns();
 }
 
 function pinkoiProductKey(bodyId, designId) {
@@ -3061,6 +3209,11 @@ async function submitMaster(e) {
     item.allowedBodyNames = $$(".design-body-check")
       .filter(ch => ch.checked)
       .map(ch => ch.value);
+
+    const existingDesign = state.designs.find(d => d.id === item.id);
+    if (existingDesign?.legacyName) {
+      item.legacyName = existingDesign.legacyName;
+    }
   }
 
   if (type === "color") {
@@ -3306,6 +3459,14 @@ function bindEvents() {
         editPinkoi.dataset.bodyId,
         editPinkoi.dataset.designId
       );
+    }
+
+    const importLegacy = e.target.closest("[data-import-legacy-design]");
+    if (importLegacy) {
+      const legacyName = importLegacy.dataset.importLegacyDesign;
+      const input = document.getElementById(importLegacy.dataset.inputId);
+      await importLegacyDesign(legacyName, input?.value || legacyName);
+      return;
     }
 
     const addMaster = e.target.closest("[data-add-master]");

@@ -571,6 +571,66 @@ textarea {
     }
   </style>
 
+
+  <style>
+    .legacy-design-import {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #ecece8;
+    }
+
+    .legacy-design-import-head {
+      display: grid;
+      gap: 2px;
+      margin-bottom: 10px;
+    }
+
+    .legacy-design-import-head small {
+      color: #777;
+    }
+
+    .legacy-design-import-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .legacy-design-import-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.9fr) minmax(150px, 1.3fr) auto;
+      align-items: end;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 10px;
+      background: #f8f8f5;
+    }
+
+    .legacy-design-source,
+    .legacy-design-name-field {
+      display: grid;
+      gap: 3px;
+    }
+
+    .legacy-design-source small,
+    .legacy-design-name-field small {
+      color: #777;
+      font-size: 11px;
+    }
+
+    .legacy-design-name-field input {
+      width: 100%;
+    }
+
+    @media (max-width: 700px) {
+      .legacy-design-import-row {
+        grid-template-columns: 1fr;
+      }
+
+      .legacy-design-import-row .button {
+        width: 100%;
+      }
+    }
+  </style>
+
 </head>
 <body>
   <div id="app">
@@ -783,6 +843,16 @@ textarea {
               <button class="button small" data-add-master="design">追加</button>
             </div>
             <div id="designList" class="master-list"></div>
+
+            <div class="legacy-design-import">
+              <div class="legacy-design-import-head">
+                <strong>旧Tシャツ在庫から追加</strong>
+                <small>Pinkoi未登録のDesignだけ表示します</small>
+              </div>
+              <div id="legacyMissingDesigns" class="legacy-design-import-list">
+                <div class="muted">ログインすると旧Tシャツ在庫と比較します。</div>
+              </div>
+            </div>
           </div>
 
           <div class="master-card">
@@ -1199,6 +1269,6 @@ textarea {
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js?v=20260908-1200"></script>
+  <script type="module" src="./app.js?v=20260908-1225"></script>
 </body>
 </html>
