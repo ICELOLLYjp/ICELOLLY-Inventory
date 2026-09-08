@@ -631,6 +631,76 @@ textarea {
     }
   </style>
 
+
+  <style>
+    .legacy-sync-diagnostics {
+      margin-top: 8px;
+    }
+
+    .legacy-sync-totals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      align-items: center;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      border-radius: 9px;
+      background: #f6f6f2;
+      font-size: 12px;
+    }
+
+    .legacy-sync-totals strong {
+      font-size: 14px;
+      color: #1f1f1f;
+    }
+
+    .sync-total-ok {
+      color: #35734a;
+      font-weight: 700;
+    }
+
+    .sync-total-warning {
+      color: #a15b22;
+      font-weight: 700;
+    }
+
+    .legacy-sync-issues {
+      font-size: 12px;
+    }
+
+    .legacy-sync-issues summary {
+      cursor: pointer;
+      color: #8a5c24;
+    }
+
+    .legacy-sync-issue-list {
+      display: grid;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .legacy-sync-issue-row {
+      display: grid;
+      grid-template-columns: minmax(130px, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 5px 8px;
+      border-radius: 7px;
+      background: #faf8f2;
+    }
+
+    @media (max-width: 700px) {
+      .legacy-sync-issue-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .legacy-sync-issue-row span:nth-child(2) {
+        grid-column: 1 / -1;
+        color: #777;
+      }
+    }
+  </style>
+
 </head>
 <body>
   <div id="app">
@@ -668,6 +738,7 @@ textarea {
           <div>
             <strong>Tシャツ実在庫同期</strong>
             <div id="legacySyncStatus" class="muted">ログインするとTシャツ在庫と同期します</div>
+            <div id="legacySyncDiagnostics" class="legacy-sync-diagnostics"></div>
             <div class="muted">Organic / Vintage は旧Tシャツ在庫アプリと双方向同期。MIJはPinkoi Inventoryで管理します。</div>
           </div>
           <button id="legacySyncNowBtn" class="button secondary small" type="button">今すぐ同期</button>
@@ -1269,6 +1340,6 @@ textarea {
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js?v=20260908-1225"></script>
+  <script type="module" src="./app.js?v=20260908-1255"></script>
 </body>
 </html>

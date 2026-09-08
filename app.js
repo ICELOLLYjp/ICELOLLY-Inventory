@@ -655,7 +655,13 @@ async function importLegacyDesign(legacyName, canonicalName) {
     };
 
     await saveCollectionItem("designs", update);
-    showToast(`${cleanCanonical} に旧在庫名を紐付けました`);
+    Object.assign(existing, update);
+
+    renderMissingLegacyDesigns();
+    renderLegacyStockDiagnostics();
+    await reconcileLegacyStockToPinkoi(true);
+
+    showToast(`${cleanCanonical} に旧在庫名を紐付けて在庫を同期しました`);
     return;
   }
 
@@ -676,7 +682,19 @@ async function importLegacyDesign(legacyName, canonicalName) {
   };
 
   await saveCollectionItem("designs", item);
-  showToast(`${cleanCanonical} を追加しました`);
+
+  if (!state.designs.some(d => d.id === item.id)) {
+    state.designs.push(item);
+  }
+
+  renderMissingLegacyDesigns();
+  renderLegacyStockDiagnostics();
+
+  // The imported design already exists in tshirtStock/shared, so bring its
+  // physical stock into Pinkoi Inventory immediately.
+  await reconcileLegacyStockToPinkoi(true);
+
+  showToast(`${cleanCanonical} を追加して在庫を同期しました`);
 }
 
 
@@ -703,6 +721,195 @@ function legacyMappingForInventoryItem(item) {
     legacyColor,
     size
   };
+}
+
+
+function legacyStockTotal() {
+  let total = 0;
+
+  for (const design of Object.values(legacyStockState.designs || {})) {
+    for (const sizes of Object.values(design?.stock || {})) {
+      for (const value of Object.values(sizes || {})) {
+        total += Math.max(0, Number(value || 0));
+      }
+    }
+  }
+
+  return total;
+}
+
+function legacyStockDiagnostics() {
+  const result = {
+    sourceTotal: legacyStockTotal(),
+    mappedTotal: 0,
+    appTotal: state.inventory.reduce(
+      (sum, v) => sum + Math.max(0, Number(v.stock || 0)),
+      0
+    ),
+    unmatchedTotal: 0,
+    excludedTotal: 0,
+    issues: []
+  };
+
+  const reverseColors = {};
+
+  for (const [bodyName, colorMap] of Object.entries(LEGACY_TSHIRT_COLOR_MAP)) {
+    for (const [canonicalColorName, legacyColorName] of Object.entries(colorMap)) {
+      reverseColors[legacyColorName] = {
+        bodyName,
+        canonicalColorName
+      };
+    }
+  }
+
+  for (const [legacyDesignName, legacyDesign] of Object.entries(
+    legacyStockState.designs || {}
+  )) {
+    const designMaster = canonicalDesignForLegacyName(legacyDesignName);
+
+    for (const [legacyColorName, sizes] of Object.entries(
+      legacyDesign?.stock || {}
+    )) {
+      const colorTotal = Object.values(sizes || {}).reduce(
+        (sum, value) => sum + Math.max(0, Number(value || 0)),
+        0
+      );
+
+      if (colorTotal <= 0) continue;
+
+      if (!designMaster) {
+        result.unmatchedTotal += colorTotal;
+        result.issues.push({
+          type: "design",
+          label: `${legacyDesignName}`,
+          stock: colorTotal,
+          reason: "Pinkoi Design未登録"
+        });
+        continue;
+      }
+
+      const colorInfo = reverseColors[legacyColorName];
+
+      if (!colorInfo) {
+        result.unmatchedTotal += colorTotal;
+        result.issues.push({
+          type: "color",
+          label: `${designMaster.internalName} / ${legacyColorName}`,
+          stock: colorTotal,
+          reason: "Color対応未設定"
+        });
+        continue;
+      }
+
+      const disabledBody =
+        Array.isArray(designMaster.disabledBodyNames) &&
+        designMaster.disabledBodyNames.includes(colorInfo.bodyName);
+
+      const disabledKey =
+        `${colorInfo.bodyName}__${colorInfo.canonicalColorName}`;
+
+      const disabledColor =
+        Array.isArray(designMaster.disabledInventoryKeys) &&
+        designMaster.disabledInventoryKeys.includes(disabledKey);
+
+      if (disabledBody || disabledColor) {
+        result.excludedTotal += colorTotal;
+        result.issues.push({
+          type: "excluded",
+          label: `${designMaster.internalName} / ${colorInfo.canonicalColorName}`,
+          stock: colorTotal,
+          reason: "同期除外"
+        });
+        continue;
+      }
+
+      const bodyMaster = canonicalMasterByName(
+        state.bodies,
+        colorInfo.bodyName
+      );
+
+      const colorMaster = canonicalMasterByName(
+        state.colors,
+        colorInfo.canonicalColorName
+      );
+
+      if (!bodyMaster || !colorMaster) {
+        result.unmatchedTotal += colorTotal;
+        result.issues.push({
+          type: "master",
+          label: `${designMaster.internalName} / ${colorInfo.canonicalColorName}`,
+          stock: colorTotal,
+          reason: "Body / Colorマスター不足"
+        });
+        continue;
+      }
+
+      result.mappedTotal += colorTotal;
+    }
+  }
+
+  return result;
+}
+
+function renderLegacyStockDiagnostics() {
+  const target = $("#legacySyncDiagnostics");
+  if (!target) return;
+
+  if (!state.user) {
+    target.innerHTML = "";
+    return;
+  }
+
+  if (!legacyStockState.ready) {
+    target.innerHTML = `<div class="muted">旧Tシャツ在庫を確認中…</div>`;
+    return;
+  }
+
+  const d = legacyStockDiagnostics();
+  const difference = d.mappedTotal - d.appTotal;
+
+  const totals = `
+    <div class="legacy-sync-totals">
+      <span>旧Tシャツ在庫 <strong>${d.sourceTotal}</strong></span>
+      <span>同期対象 <strong>${d.mappedTotal}</strong></span>
+      <span>Pinkoi実在庫 <strong>${d.appTotal}</strong></span>
+      <span class="${difference === 0 ? "sync-total-ok" : "sync-total-warning"}">
+        差 ${difference > 0 ? "+" : ""}${difference}
+      </span>
+    </div>
+  `;
+
+  const issueSummary = [];
+
+  if (d.unmatchedTotal > 0) {
+    issueSummary.push(`未対応 ${d.unmatchedTotal}枚`);
+  }
+
+  if (d.excludedTotal > 0) {
+    issueSummary.push(`同期除外 ${d.excludedTotal}枚`);
+  }
+
+  const issues = d.issues.length
+    ? `
+      <details class="legacy-sync-issues">
+        <summary>
+          同期されない在庫 ${d.unmatchedTotal + d.excludedTotal}枚
+          ${issueSummary.length ? `（${issueSummary.join(" / ")}）` : ""}
+        </summary>
+        <div class="legacy-sync-issue-list">
+          ${d.issues.map(issue => `
+            <div class="legacy-sync-issue-row">
+              <span>${esc(issue.label)}</span>
+              <span>${esc(issue.reason)}</span>
+              <strong>${issue.stock}枚</strong>
+            </div>
+          `).join("")}
+        </div>
+      </details>
+    `
+    : `<div class="muted sync-total-ok">旧Tシャツ在庫はすべて同期対象です。</div>`;
+
+  target.innerHTML = totals + issues;
 }
 
 function setLegacySyncStatus(message, stateName = "") {
@@ -813,6 +1020,11 @@ async function reconcileLegacyStockToPinkoi(force = false) {
     legacyStockState.error = "";
     const time = legacyStockState.lastSyncedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
     setLegacySyncStatus(`Tシャツ在庫 同期済み ${time}${changed ? ` / ${changed}件更新` : ""}`, "ok");
+    renderLegacyStockDiagnostics();
+
+    // Firestore inventory snapshots arrive asynchronously after writes.
+    // Refresh again shortly after so the displayed app total catches up.
+    setTimeout(renderLegacyStockDiagnostics, 500);
   } finally {
     legacyStockState.syncing = false;
   }
@@ -883,6 +1095,7 @@ function startLegacyStockRealtime() {
     legacyStockState.ready = true;
     legacyStockState.error = "";
     renderMissingLegacyDesigns();
+    renderLegacyStockDiagnostics();
     scheduleLegacyStockReconcile(80);
   }, err => {
     console.error("legacy tshirt stock snapshot failed", err);
@@ -1105,6 +1318,7 @@ function render() {
   renderSizeCharts();
   renderMasters();
   renderPinkoi();
+  renderLegacyStockDiagnostics();
 }
 
 function renderSummary() {
@@ -3334,6 +3548,7 @@ function bindEvents() {
     if (btn) btn.disabled = true;
     try {
       await reconcileLegacyStockToPinkoi(true);
+      renderLegacyStockDiagnostics();
       showToast("Tシャツ在庫を同期しました");
     } finally {
       if (btn) btn.disabled = false;
