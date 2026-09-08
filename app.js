@@ -806,37 +806,163 @@ function tshirtBodyForPinkoiBody(body) {
   }) || null;
 }
 
-function canonicalDesignForTshirtMaster(masterDesign) {
-  if (!masterDesign) return null;
+
+function canonicalPinkoiDesignNameFromTshirtMaster(masterDesign) {
+  if (!masterDesign) return "";
 
   const sourceNames = [
     masterDesign.managementName,
     masterDesign.salesName,
-    masterDesign.legacyKey
-  ].filter(Boolean).map(normalizedTshirtKey);
+    masterDesign.legacyKey,
+    masterDesign.id
+  ].filter(Boolean);
 
-  const direct = state.designs.find(d => {
-    const targetNames = [
-      d.internalName,
-      d.legacyName,
-      d.displayName?.ja,
-      d.displayName?.en
-    ].filter(Boolean).map(normalizedTshirtKey);
+  const normalizedSources = sourceNames.map(normalizedTshirtKey);
 
-    return sourceNames.some(name => targetNames.includes(name));
-  });
-  if (direct) return direct;
-
+  // Known legacy/current aliases first.
   for (const [canonicalName, aliases] of Object.entries(TSHIRT_MASTER_DESIGN_ALIASES)) {
-    const normalizedAliases = aliases.map(normalizedTshirtKey);
-    if (sourceNames.some(name => normalizedAliases.includes(name))) {
-      return state.designs.find(
-        d => normalizedTshirtKey(d.internalName) === normalizedTshirtKey(canonicalName)
-      ) || null;
+    const candidates = [
+      canonicalName,
+      ...aliases
+    ].map(normalizedTshirtKey);
+
+    if (normalizedSources.some(name => candidates.includes(name))) {
+      return canonicalName;
     }
   }
 
-  return null;
+  // If the T-shirt master uses a newer design that Pinkoi does not know yet,
+  // use its management/sales name as the Pinkoi canonical name.
+  return String(
+    masterDesign.salesName ||
+    masterDesign.managementName ||
+    masterDesign.legacyKey ||
+    ""
+  ).trim();
+}
+
+function existingPinkoiDesignByCanonicalName(canonicalName, masterDesign = null) {
+  const candidateNames = [
+    canonicalName,
+    masterDesign?.managementName,
+    masterDesign?.salesName,
+    masterDesign?.legacyKey
+  ].filter(Boolean).map(normalizedTshirtKey);
+
+  return state.designs.find(d => {
+    const pinkoiNames = [
+      d.internalName,
+      d.legacyName,
+      d.displayName?.ja,
+      d.displayName?.en,
+      d.displayName?.zhTW
+    ].filter(Boolean).map(normalizedTshirtKey);
+
+    return candidateNames.some(name => pinkoiNames.includes(name));
+  }) || null;
+}
+
+async function ensurePinkoiDesignsForTshirtMaster() {
+  if (!legacyStockState.ready) return 0;
+
+  const usedDesignIds = new Set();
+
+  for (const row of tshirtMasterInventoryEntries()) {
+    if (row.qty > 0 && row.designId) {
+      usedDesignIds.add(row.designId);
+    }
+  }
+
+  let added = 0;
+
+  for (const designId of usedDesignIds) {
+    const masterDesign = tshirtMasterDesigns()?.[designId];
+    if (!masterDesign) continue;
+
+    const canonicalName = canonicalPinkoiDesignNameFromTshirtMaster(masterDesign);
+    if (!canonicalName) continue;
+
+    const existing = existingPinkoiDesignByCanonicalName(canonicalName, masterDesign);
+
+    if (existing) {
+      // Preserve an alias back to the T-shirt master when useful.
+      const aliasName =
+        masterDesign.legacyKey ||
+        masterDesign.managementName ||
+        "";
+
+      if (aliasName && !existing.legacyName) {
+        const update = {
+          ...existing,
+          legacyName: aliasName,
+          updatedAt: new Date().toISOString()
+        };
+
+        await saveCollectionItem("designs", update);
+        Object.assign(existing, update);
+      }
+
+      continue;
+    }
+
+    const aliasName =
+      masterDesign.legacyKey ||
+      masterDesign.managementName ||
+      canonicalName;
+
+    const item = {
+      id: stableMasterId("design", canonicalName),
+      internalName: canonicalName,
+      code: makeDesignCode(canonicalName),
+      displayName: {
+        ja: canonicalName,
+        en: canonicalName,
+        zhTW: canonicalName
+      },
+      allowedBodyNames: ["Organic", "Vintage", "MIJ"],
+      legacyName: aliasName,
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveCollectionItem("designs", item);
+
+    if (!state.designs.some(d => d.id === item.id)) {
+      state.designs.push(item);
+    }
+
+    added++;
+  }
+
+  if (added) {
+    renderMasters();
+    fillSelects();
+  }
+
+  return added;
+}
+
+function canonicalDesignForTshirtMaster(masterDesign) {
+  if (!masterDesign) return null;
+
+  const canonicalName = canonicalPinkoiDesignNameFromTshirtMaster(masterDesign);
+
+  const direct = existingPinkoiDesignByCanonicalName(
+    canonicalName,
+    masterDesign
+  );
+  if (direct) return direct;
+
+  // Realtime Firestore snapshots can arrive slightly after an auto-created
+  // Design. Fall back to the canonical seed/default object when possible.
+  const seedDesign =
+    seed.designs.find(
+      d => normalizedTshirtKey(d.internalName) === normalizedTshirtKey(canonicalName)
+    ) ||
+    ICELOLLY_DEFAULTS.designs.find(
+      d => normalizedTshirtKey(d.internalName) === normalizedTshirtKey(canonicalName)
+    );
+
+  return seedDesign || null;
 }
 
 function tshirtDesignForPinkoiDesign(pinkoiDesign) {
@@ -1213,9 +1339,14 @@ function mappedTshirtRows() {
 
     const pinkoiDesign = canonicalDesignForTshirtMaster(row.design);
     if (!pinkoiDesign) {
+      const canonicalDesignName =
+        canonicalPinkoiDesignNameFromTshirtMaster(row.design) ||
+        tshirtMasterSourceName(row.design) ||
+        row.designId;
+
       issues.push({
         type: "design",
-        label: tshirtMasterSourceName(row.design) || row.designId,
+        label: canonicalDesignName,
         stock: row.qty,
         reason: "Pinkoi Design未登録"
       });
@@ -1491,6 +1622,7 @@ async function reconcileLegacyStockToPinkoi(force = false) {
 
   try {
     await ensureCanonicalPinkoiBodiesForTshirtMaster();
+    await ensurePinkoiDesignsForTshirtMaster();
 
     const { target } = tshirtMasterTargetMap();
     const existingByKey = new Map(
@@ -1600,12 +1732,14 @@ function startLegacyStockRealtime() {
     renderLegacyStockDiagnostics();
 
     ensureCanonicalPinkoiBodiesForTshirtMaster()
-      .then(() => {
+      .then(async () => {
+        await ensurePinkoiDesignsForTshirtMaster();
+        renderMissingLegacyDesigns();
         renderLegacyStockDiagnostics();
         scheduleLegacyStockReconcile(40);
       })
       .catch(err => {
-        console.error("Pinkoi Body auto setup failed", err);
+        console.error("Pinkoi Body / Design auto setup failed", err);
         scheduleLegacyStockReconcile(80);
       });
   }, err => {
