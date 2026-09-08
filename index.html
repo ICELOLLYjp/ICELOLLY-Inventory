@@ -739,7 +739,7 @@ textarea {
             <strong>Tシャツ実在庫同期</strong>
             <div id="legacySyncStatus" class="muted">ログインするとTシャツ在庫と同期します</div>
             <div id="legacySyncDiagnostics" class="legacy-sync-diagnostics"></div>
-            <div class="muted">Organic / Vintage は旧Tシャツ在庫アプリと双方向同期。MIJはPinkoi Inventoryで管理します。</div>
+            <div class="muted">Organic / Vintage / MIJ を tshirtStock/master の inventory_v2 から同期します。実在庫の正はTシャツ在庫管理アプリです。</div>
           </div>
           <button id="legacySyncNowBtn" class="button secondary small" type="button">今すぐ同期</button>
         </div>
@@ -917,11 +917,11 @@ textarea {
 
             <div class="legacy-design-import">
               <div class="legacy-design-import-head">
-                <strong>旧Tシャツ在庫から追加</strong>
+                <strong>Tシャツmasterから追加</strong>
                 <small>Pinkoi未登録のDesignだけ表示します</small>
               </div>
               <div id="legacyMissingDesigns" class="legacy-design-import-list">
-                <div class="muted">ログインすると旧Tシャツ在庫と比較します。</div>
+                <div class="muted">ログインするとTシャツmasterと比較します。</div>
               </div>
             </div>
           </div>
@@ -1341,6 +1341,6 @@ textarea {
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js?v=20260908-1215"></script>
+  <script type="module" src="./app.js?v=20260908-1935"></script>
 </body>
 </html>
