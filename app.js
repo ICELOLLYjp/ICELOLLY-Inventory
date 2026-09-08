@@ -29,9 +29,9 @@ const seed = {
 
 const ICELOLLY_DEFAULTS = {
   bodies: [
-    { internalName: "Organic", code: "ORG", displayName: { ja: "オーガニックコットンTシャツ", en: "Organic Cotton T Shirt", zhTW: "有機棉 T恤" } },
-    { internalName: "Vintage", code: "VNT", displayName: { ja: "ヴィンテージ加工Tシャツ", en: "Vintage Washed T Shirt", zhTW: "復古水洗 T恤" } },
-    { internalName: "MIJ", code: "MIJ", displayName: { ja: "日本製Tシャツ", en: "Made in Japan T Shirt", zhTW: "日本製 T恤" } }
+    { internalName: "Organic", code: "ORG", displayName: { ja: "オーガニックコットンTシャツ", en: "Organic Cotton T Shirt", zhTW: "有機棉 T恤" }, bodyModel: "TRUSS OGB-910", sizeChartSource: "https://www.truss-wear.jp/items/index.php?page=info&code=OGB-910", sizeChart: DEFAULT_BODY_SIZE_CHARTS.Organic.sizeChart },
+    { internalName: "Vintage", code: "VNT", displayName: { ja: "ヴィンテージ加工Tシャツ", en: "Vintage Washed T Shirt", zhTW: "復古水洗 T恤" }, bodyModel: "D-FACTORY DF1101D", sizeChartSource: "https://sloth-ethical.com/product.php?id=43", sizeChart: DEFAULT_BODY_SIZE_CHARTS.Vintage.sizeChart },
+    { internalName: "MIJ", code: "MIJ", displayName: { ja: "日本製Tシャツ", en: "Made in Japan T Shirt", zhTW: "日本製 T恤" }, bodyModel: "TRUSS JPC-001", sizeChartSource: "https://www.truss-wear.jp/items/index.php?page=info&code=JPC-001", sizeChart: DEFAULT_BODY_SIZE_CHARTS.MIJ.sizeChart }
   ],
 
   designs: [
@@ -133,6 +133,155 @@ The T shirt body, color, and material may be different depending on the design. 
 
 不同設計所使用的 T 恤版型、顏色與材質可能有所不同。尺寸與材質資訊請確認商品頁面的詳細說明。`
 };
+
+
+const DEFAULT_BODY_SIZE_CHARTS = {
+  Organic: {
+    model: "TRUSS OGB-910",
+    source: "https://www.truss-wear.jp/items/index.php?page=info&code=OGB-910",
+    sizeChart: {
+      S:   { length: 65, width: 48, shoulder: 43, sleeve: 18 },
+      M:   { length: 68, width: 52, shoulder: 46, sleeve: 19 },
+      L:   { length: 71, width: 56, shoulder: 49, sleeve: 20 },
+      XL:  { length: 74, width: 60, shoulder: 52, sleeve: 21 },
+      XXL: { length: 77, width: 64, shoulder: 55, sleeve: 22 }
+    }
+  },
+
+  Vintage: {
+    model: "D-FACTORY DF1101D",
+    source: "https://sloth-ethical.com/product.php?id=43",
+    sizeChart: {
+      S:   { length: 65, width: 49, shoulder: 42, sleeve: 19 },
+      M:   { length: 69, width: 52, shoulder: 46, sleeve: 20 },
+      L:   { length: 73, width: 55, shoulder: 50, sleeve: 22 },
+      XL:  { length: 77, width: 58, shoulder: 54, sleeve: 24 },
+      XXL: { length: 81, width: 61, shoulder: 57, sleeve: 25 }
+    }
+  },
+
+  MIJ: {
+    model: "TRUSS JPC-001",
+    source: "https://www.truss-wear.jp/items/index.php?page=info&code=JPC-001",
+    sizeChart: {
+      S:   { length: 68, width: 47, shoulder: 45, sleeve: 23 },
+      M:   { length: 71, width: 51, shoulder: 48, sleeve: 24 },
+      L:   { length: 74, width: 56, shoulder: 51, sleeve: 25 },
+      XL:  { length: 77, width: 61, shoulder: 54, sleeve: 26 },
+      XXL: { length: 80, width: 66, shoulder: 57, sleeve: 27 }
+    }
+  }
+};
+
+function defaultSizeChartForBody(body) {
+  return DEFAULT_BODY_SIZE_CHARTS[body?.internalName] || null;
+}
+
+
+const BODY_PINKOI_COPY = {
+  Organic: {
+    highlightJa: "ICELOLLYのオリジナルイラストをプリントした、100％オーガニックコットンのTシャツです。襟は二本針縫製で、着用を重ねても伸びにくい仕様です。",
+    descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
+
+ボディにはTRUSS OGB 910を使用。オーガニックコットン100％で、襟は二本針縫製を採用し、着用を重ねても伸びにくい仕様です。胴は脇に縫い目のない丸胴仕様で、すっきりとした着心地に仕上げられています。
+
+一枚でも着やすく、パンツやスカートなどさまざまなスタイルに合わせやすいアイテムです。日常はもちろん、旅先にも取り入れやすいTシャツです。
+
+デザインごとにカラー展開が異なります。サイズは商品ページのサイズ表をご確認ください。`,
+    highlightEn: "An original ICELOLLY T shirt made with 100% organic cotton. The double needle collar is designed to help keep its shape for everyday wear.",
+    descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
+
+It uses the TRUSS OGB 910 body made with 100% organic cotton. The collar has double needle stitching to help reduce stretching, and the body has a tubular construction without side seams.
+
+It is easy to wear on its own and simple to match with many styles. It also works well for travel and everyday use.
+
+Available colors depend on the design. Please check the size chart on the product page.`,
+    highlightZh: "印有 ICELOLLY 原創插畫的 T 恤，使用 100％ 有機棉製作。領口採用雙針縫製，較不易因反覆穿著而鬆弛。",
+    descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
+
+T 恤使用 TRUSS OGB 910 版型，材質為 100％ 有機棉。領口採用雙針縫製，較不易因反覆穿著而鬆弛。衣身採圓筒無側縫結構，穿著感簡潔舒適。
+
+單穿也很好搭配，可以輕鬆融入不同風格，日常穿著或旅行時都很適合。
+
+不同設計的顏色選擇可能不同，尺寸請參考商品頁面的尺寸表。`
+  },
+
+  Vintage: {
+    highlightJa: "6.6ozのコットン100％ボディにピグメント染めを施し、着古したようなヴィンテージ感を楽しめるTシャツです。着用や洗濯を重ねることで独特のエイジングが加わります。",
+    descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
+
+ボディにはD FACTORY DF1101Dを使用。コットン100％の6.6oz生地にピグメント染めを施し、状態のよい古着のような風合いに仕上げられています。着用や洗濯を重ねることで、色合いの変化や独特のエイジングを楽しめます。
+
+襟は二本針縫製、胴は丸胴仕様です。一枚でも存在感があり、シンプルなコーディネートにも合わせやすいTシャツです。
+
+染め製品の特性上、色合いやサイズ感には個体差があります。また、水濡れや摩擦、洗濯により色落ちや移染が生じる場合があります。`,
+    highlightEn: "A 6.6 oz 100% cotton T shirt with pigment dye for a worn in vintage look. The color develops more character with wear and washing.",
+    descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
+
+It uses the D FACTORY DF1101D body made from 100% cotton in a 6.6 oz fabric. Pigment dye gives it the look and feel of a well kept vintage T shirt, and the color develops more character with wear and washing.
+
+The collar uses double needle stitching and the body has a tubular construction. It has enough presence to wear on its own and is easy to match with simple outfits.
+
+Because this is a pigment dyed garment, color and size may vary slightly. Color may also fade or transfer with water, friction, or washing.`,
+    highlightZh: "6.6 oz 的 100％ 棉質 T 恤，以顏料染色呈現自然的復古舊衣感。隨著穿著與清洗，顏色會逐漸產生獨特變化。",
+    descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
+
+T 恤使用 D FACTORY DF1101D 版型，採用 100％ 棉、6.6 oz 布料與顏料染色，呈現如保存良好的復古 T 恤般的自然質感。隨著穿著與清洗，顏色會逐漸產生獨特的變化。
+
+領口採雙針縫製，衣身為圓筒結構。單穿就有存在感，也很容易搭配簡單的日常造型。
+
+由於染色製品的特性，顏色與尺寸可能有些微個體差異。遇水、摩擦或清洗時也可能產生褪色或移色情況。`
+  },
+
+  MIJ: {
+    highlightJa: "日本国内で全工程を行った6.6ozの日本製Tシャツです。USAコットン100％のオープンエンド糸によるドライな風合いと、丸胴仕様、シングルステッチなど細部までこだわった一枚です。",
+    descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
+
+ボディにはCOTTON RESEARCH CLUB JPC 001を使用。全ての工程を日本国内で行った日本製Tシャツです。USAコットン100％のオープンエンド糸を使った6.6oz生地は、ほどよい厚みがありながら軽さのあるドライな風合いが特徴です。
+
+胴は脇に縫い目のない丸胴仕様。袖と裾にはクラシックなUSA製Tシャツを思わせるシングルステッチを採用しています。肩から首周りには補強の縫製が施され、日常で長く着やすい仕様です。
+
+一枚でも着やすく、デニムやパンツなど幅広いスタイルに合わせやすいTシャツです。サイズは商品ページのサイズ表をご確認ください。`,
+    highlightEn: "A 6.6 oz T shirt made in Japan from 100% USA cotton. Open end yarn gives it a dry touch, with tubular construction and classic single stitch details.",
+    descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
+
+It uses the COTTON RESEARCH CLUB JPC 001 body. Every production process is completed in Japan. The 6.6 oz fabric is made from 100% USA cotton with open end yarn, giving it a dry touch with a light feel.
+
+The body has a tubular construction without side seams. The sleeves and hem use classic single stitching, and the shoulder and neck area is reinforced for added durability.
+
+It is easy to wear on its own and simple to match with denim, pants, and many everyday styles. Please check the size chart on the product page.`,
+    highlightZh: "日本製 6.6 oz T 恤，使用 100％ 美國棉與開端紡紗。布料帶有乾爽質感，並採用圓筒衣身與經典單針縫製細節。",
+    descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
+
+T 恤使用 COTTON RESEARCH CLUB JPC 001 版型，所有生產工程均在日本國內完成。6.6 oz 布料使用 100％ 美國棉與開端紡紗，具有適度厚度，同時保有輕盈乾爽的質感。
+
+衣身採圓筒無側縫結構，袖口與下擺使用經典單針縫製，肩部與領口周圍也有加強縫製，提高日常穿著的耐用度。
+
+單穿也很好搭配，可輕鬆搭配牛仔褲、長褲等多種日常造型。尺寸請參考商品頁面的尺寸表。`
+  }
+};
+
+function defaultPinkoiCopyForBody(bodyId) {
+  const body = byId(state.bodies, bodyId);
+  return BODY_PINKOI_COPY[body?.internalName] || DEFAULT_PINKOI_COPY;
+}
+
+function pinkoiCopyValue(product, key, bodyId) {
+  const saved = product?.[key];
+  const bodyDefaults = defaultPinkoiCopyForBody(bodyId);
+
+  // Blank values use the body specific default.
+  if (!saved) return bodyDefaults[key] || "";
+
+  // If an older product simply saved the former generic default,
+  // upgrade the editor to the new body specific copy.
+  if (saved === DEFAULT_PINKOI_COPY[key]) {
+    return bodyDefaults[key] || saved;
+  }
+
+  // User edited copy is never overwritten.
+  return saved;
+}
 
 const BODY_COLOR_RULES = {
   Organic: ["Natural", "Black", "Green", "Light Purple", "Pink", "Beige Grey"],
@@ -320,7 +469,10 @@ function render() {
   renderSummary();
   renderFilters();
   renderPinkoiFilters();
+  renderTaskFilters();
   renderInventory();
+  renderStockTasks();
+  renderSizeCharts();
   renderMasters();
   renderPinkoi();
 }
@@ -421,6 +573,23 @@ function renderPinkoiFilters() {
 
   if (current && state.bodies.some(b => b.id === current)) {
     bodySelect.value = current;
+  }
+}
+
+
+function renderTaskFilters() {
+  const select = $("#taskBodyFilter");
+  if (!select) return;
+
+  const current = select.value;
+  select.innerHTML =
+    `<option value="">All Bodies</option>` +
+    state.bodies.map(b =>
+      `<option value="${esc(b.id)}">${esc(b.internalName)}</option>`
+    ).join("");
+
+  if (current && state.bodies.some(b => b.id === current)) {
+    select.value = current;
   }
 }
 
@@ -569,6 +738,304 @@ function renderInventory() {
   }
 
   $("#inventoryRows").innerHTML = html.join("");
+}
+
+
+function stockTaskRows() {
+  const q = ($("#taskSearchInput")?.value || "").trim().toLowerCase();
+  const bodyFilter = $("#taskBodyFilter")?.value || "";
+  const typeFilter = $("#taskTypeFilter")?.value || "all";
+
+  return state.inventory
+    .map(v => {
+      const body = byId(state.bodies, v.bodyId);
+      const design = byId(state.designs, v.designId);
+      const color = byId(state.colors, v.colorId);
+      const stock = Number(v.stock || 0);
+      const pinkoi = Number(v.pinkoiStock || 0);
+
+      let taskType = "ok";
+      if (stock < pinkoi) taskType = "production";
+      else if (stock > pinkoi) taskType = "increase";
+
+      const soldOut = stock === 0;
+
+      return {
+        ...v,
+        body,
+        design,
+        color,
+        stock,
+        pinkoi,
+        taskType,
+        soldOut,
+        difference: Math.abs(stock - pinkoi)
+      };
+    })
+    .filter(v => {
+      if (bodyFilter && v.bodyId !== bodyFilter) return false;
+
+      if (typeFilter === "production" && v.taskType !== "production") return false;
+      if (typeFilter === "increase" && v.taskType !== "increase") return false;
+      if (typeFilter === "soldout" && !v.soldOut) return false;
+      if (typeFilter === "all" && v.taskType === "ok" && !v.soldOut) return false;
+
+      if (!q) return true;
+
+      const hay = [
+        v.body?.internalName,
+        v.design?.internalName,
+        v.color?.internalName,
+        v.size,
+        v.sku
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      return hay.includes(q);
+    });
+}
+
+function renderStockTasks() {
+  if (!$("#tasksTab")) return;
+
+  const all = state.inventory.map(v => ({
+    ...v,
+    stockNum: Number(v.stock || 0),
+    pinkoiNum: Number(v.pinkoiStock || 0)
+  }));
+
+  const needsUpdate = all.filter(v => v.stockNum !== v.pinkoiNum).length;
+  const productionCount = all.filter(v => v.stockNum < v.pinkoiNum).length;
+  const increaseCount = all.filter(v => v.stockNum > v.pinkoiNum).length;
+  const soldOutCount = all.filter(v => v.stockNum === 0).length;
+
+  $("#taskNeedsUpdate").textContent = needsUpdate;
+  $("#taskProductionCount").textContent = productionCount;
+  $("#taskCanIncreaseCount").textContent = increaseCount;
+  $("#taskSoldOutCount").textContent = soldOutCount;
+
+  const rows = stockTaskRows();
+
+  const production = rows
+    .filter(v => v.taskType === "production")
+    .sort((a, b) =>
+      (b.pinkoi - b.stock) - (a.pinkoi - a.stock) ||
+      (a.design?.internalName || "").localeCompare(b.design?.internalName || "")
+    );
+
+  const increase = rows
+    .filter(v => v.taskType === "increase")
+    .sort((a, b) =>
+      (b.stock - b.pinkoi) - (a.stock - a.pinkoi) ||
+      (a.design?.internalName || "").localeCompare(b.design?.internalName || "")
+    );
+
+  const makeRows = (items, mode) => items.map(v => {
+    const delta = mode === "production"
+      ? v.pinkoi - v.stock
+      : v.stock - v.pinkoi;
+
+    return `
+      <tr>
+        <td>${esc(v.body?.internalName || "?")}</td>
+        <td>${esc(v.design?.internalName || "?")}</td>
+        <td>${esc(v.color?.internalName || "?")}</td>
+        <td>${esc(v.size || "")}</td>
+        <td>${v.stock}</td>
+        <td>${v.pinkoi}</td>
+        <td class="${mode === "production" ? "status-warn" : "status-ok"}">${delta}</td>
+        <td>
+          <button class="link-button" data-edit-variant="${esc(v.id)}">編集</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  $("#productionTaskRows").innerHTML =
+    makeRows(production, "production") ||
+    `<tr><td colspan="8" class="muted">制作候補はありません</td></tr>`;
+
+  $("#increaseTaskRows").innerHTML =
+    makeRows(increase, "increase") ||
+    `<tr><td colspan="8" class="muted">Pinkoi在庫を増やせる商品はありません</td></tr>`;
+}
+
+
+const SIZE_CHART_FIELDS = [
+  { key: "length", label: "身丈" },
+  { key: "width", label: "身幅" },
+  { key: "shoulder", label: "肩幅" },
+  { key: "sleeve", label: "袖丈" }
+];
+
+function sizeChartValue(body, size, key) {
+  const saved = body?.sizeChart?.[size]?.[key];
+  if (saved !== undefined && saved !== null && saved !== "") return saved;
+
+  const defaults = defaultSizeChartForBody(body);
+  const fallback = defaults?.sizeChart?.[size]?.[key];
+  return fallback === undefined || fallback === null ? "" : fallback;
+}
+
+function renderSizeCharts() {
+  const target = $("#sizeChartCards");
+  if (!target) return;
+
+  const sizes = APP_CONFIG.sizes || ["S", "M", "L", "XL", "XXL"];
+
+  target.innerHTML = state.bodies.map(body => {
+    const rows = SIZE_CHART_FIELDS.map(field => `
+      <tr>
+        <th>${esc(field.label)}</th>
+        ${sizes.map(size => {
+          const value = sizeChartValue(body, size, field.key);
+          return `<td>${value === "" ? "—" : esc(value)}</td>`;
+        }).join("")}
+      </tr>
+    `).join("");
+
+    return `
+      <article class="size-chart-card">
+        <div class="section-title">
+          <div>
+            <h2>${esc(body.internalName)}</h2>
+            <p class="muted">${esc(displayName(body, "en") || "")}</p>
+            <p class="muted">${esc(body.bodyModel || defaultSizeChartForBody(body)?.model || "")}</p>
+          </div>
+          <button class="button secondary small"
+                  data-edit-size-chart="${esc(body.id)}">
+            サイズ表を編集
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="size-chart-display-table">
+            <thead>
+              <tr>
+                <th>cm</th>
+                ${sizes.map(size => `<th>${esc(size)}</th>`).join("")}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    `;
+  }).join("") || `<div class="muted">Bodyが登録されていません。</div>`;
+}
+
+
+async function applyDefaultSizeCharts() {
+  const targets = state.bodies.filter(body => defaultSizeChartForBody(body));
+
+  if (!targets.length) {
+    alert("対象Bodyがありません。");
+    return;
+  }
+
+  const confirmed = confirm(
+    "Organic / Vintage / MIJ にメーカー標準サイズを反映します。\n現在のサイズ表はメーカー標準値で上書きされます。"
+  );
+  if (!confirmed) return;
+
+  const btn = $("#applyDefaultSizeChartsBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "反映中...";
+  }
+
+  try {
+    for (const body of targets) {
+      const defaults = defaultSizeChartForBody(body);
+
+      await saveCollectionItem("bodies", {
+        ...body,
+        bodyModel: defaults.model,
+        sizeChartSource: defaults.source,
+        sizeChart: JSON.parse(JSON.stringify(defaults.sizeChart)),
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    showToast("メーカー標準サイズを反映しました");
+  } catch (err) {
+    console.error(err);
+    alert("サイズ表の反映に失敗しました。");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "メーカー標準サイズを反映";
+    }
+  }
+}
+
+function openSizeChartDialog(bodyId) {
+  const body = byId(state.bodies, bodyId);
+  if (!body) return;
+
+  const sizes = APP_CONFIG.sizes || ["S", "M", "L", "XL", "XXL"];
+
+  $("#sizeChartBodyId").value = bodyId;
+  $("#sizeChartDialogBodyName").textContent =
+    `${body.internalName} / ${displayName(body, "en") || ""}`;
+
+  $("#sizeChartEditRows").innerHTML = sizes.map(size => `
+    <tr data-size="${esc(size)}">
+      <th>${esc(size)}</th>
+      ${SIZE_CHART_FIELDS.map(field => `
+        <td>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            data-size-field="${esc(field.key)}"
+            value="${esc(sizeChartValue(body, size, field.key))}"
+            placeholder="cm"
+          >
+        </td>
+      `).join("")}
+    </tr>
+  `).join("");
+
+  $("#sizeChartDialog").showModal();
+}
+
+async function submitSizeChart(e) {
+  e.preventDefault();
+
+  const bodyId = $("#sizeChartBodyId").value;
+  const body = byId(state.bodies, bodyId);
+  if (!body) return;
+
+  const sizeChart = {};
+
+  for (const row of $$("#sizeChartEditRows tr[data-size]")) {
+    const size = row.dataset.size;
+    const values = {};
+    let hasValue = false;
+
+    row.querySelectorAll("[data-size-field]").forEach(input => {
+      const key = input.dataset.sizeField;
+      const raw = input.value.trim();
+
+      if (raw !== "") {
+        values[key] = Number(raw);
+        hasValue = true;
+      }
+    });
+
+    if (hasValue) sizeChart[size] = values;
+  }
+
+  await saveCollectionItem("bodies", {
+    ...body,
+    sizeChart,
+    updatedAt: new Date().toISOString()
+  });
+
+  $("#sizeChartDialog").close();
+  showToast("サイズ表を保存しました");
 }
 
 function renderMasters() {
@@ -738,6 +1205,22 @@ async function submitProductInventory(e) {
   showToast(`${saved}件の在庫を保存しました`);
 }
 
+
+function normalizedPinkoiTshirtCategory(value) {
+  const category = String(value || "").trim();
+
+  if (
+    !category ||
+    category === "ファッション > Tシャツ - 1" ||
+    category === "Tシャツ" ||
+    category === "Tシャツ メンズ"
+  ) {
+    return "ファッション > Tシャツ メンズ - 16";
+  }
+
+  return category;
+}
+
 function openPinkoiProduct(bodyId, designId) {
   const body = byId(state.bodies, bodyId);
   const design = byId(state.designs, designId);
@@ -767,7 +1250,7 @@ function openPinkoiProduct(bodyId, designId) {
   $("#pinkoiProductPrice").value = productPriceJpy(product) || 6380;
 
   $("#pinkoiCategory").value =
-    product?.category || "ファッション > Tシャツ - 1";
+    normalizedPinkoiTshirtCategory(product?.category);
 
   $("#pinkoiProductionMethod").value =
     product?.productionMethod || "工場生産";
@@ -792,12 +1275,12 @@ function openPinkoiProduct(bodyId, designId) {
   $("#pinkoiImageUrls").value = product?.imageUrls || "";
   $("#pinkoiTags").value = product?.tags || "Tシャツ";
 
-  $("#pinkoiHighlightJa").value = product?.highlightJa || DEFAULT_PINKOI_COPY.highlightJa;
-  $("#pinkoiDescriptionJa").value = product?.descriptionJa || DEFAULT_PINKOI_COPY.descriptionJa;
-  $("#pinkoiHighlightEn").value = product?.highlightEn || DEFAULT_PINKOI_COPY.highlightEn;
-  $("#pinkoiDescriptionEn").value = product?.descriptionEn || DEFAULT_PINKOI_COPY.descriptionEn;
-  $("#pinkoiHighlightZh").value = product?.highlightZh || DEFAULT_PINKOI_COPY.highlightZh;
-  $("#pinkoiDescriptionZh").value = product?.descriptionZh || DEFAULT_PINKOI_COPY.descriptionZh;
+  $("#pinkoiHighlightJa").value = pinkoiCopyValue(product, "highlightJa", bodyId);
+  $("#pinkoiDescriptionJa").value = pinkoiCopyValue(product, "descriptionJa", bodyId);
+  $("#pinkoiHighlightEn").value = pinkoiCopyValue(product, "highlightEn", bodyId);
+  $("#pinkoiDescriptionEn").value = pinkoiCopyValue(product, "descriptionEn", bodyId);
+  $("#pinkoiHighlightZh").value = pinkoiCopyValue(product, "highlightZh", bodyId);
+  $("#pinkoiDescriptionZh").value = pinkoiCopyValue(product, "descriptionZh", bodyId);
 
   $("#pinkoiProductStatus").value = product?.status || "draft";
   $("#pinkoiProductNote").value = product?.note || "";
@@ -827,7 +1310,7 @@ async function submitPinkoiProduct(e) {
     pinkoiProductId: $("#pinkoiProductId").value.trim(),
     priceJpy: Number($("#pinkoiProductPrice").value || 0),
 
-    category: $("#pinkoiCategory").value.trim(),
+    category: normalizedPinkoiTshirtCategory($("#pinkoiCategory").value),
     productionMethod: $("#pinkoiProductionMethod").value,
     origin: (() => {
       const value = $("#pinkoiOrigin").value.trim();
@@ -1102,7 +1585,8 @@ function validatePinkoiExport(groups) {
     const price = productPriceJpy(product, variants[0]);
 
     if (!titleJa || titleJa.length < 3) problems.push(`${label}: 日本語の商品名が必要です。`);
-    if (!product.category) problems.push(`${label}: 商品カテゴリーが必要です。`);
+    const normalizedCategory = normalizedPinkoiTshirtCategory(product.category);
+    if (!normalizedCategory) problems.push(`${label}: 商品カテゴリーが必要です。`);
     if (!product.productionMethod) problems.push(`${label}: 制作方法が必要です。`);
     if (!product.origin) {
       problems.push(`${label}: 製造地が必要です。`);
@@ -1268,7 +1752,7 @@ async function exportPinkoiXlsx() {
           excelSetCell(ws, row, 2, "オリジナル商品");
           excelSetCell(ws, row, 4, product.imageUrls || "");
           excelSetCell(ws, row, 5, titleJa);
-          excelSetCell(ws, row, 6, product.category);
+          excelSetCell(ws, row, 6, normalizedPinkoiTshirtCategory(product.category));
           excelSetCell(ws, row, 7, product.productionMethod);
           const exportOrigin =
             product.origin === "日本" || product.origin?.toLowerCase?.() === "japan"
@@ -1738,6 +2222,10 @@ function bindEvents() {
   $("#searchInput").addEventListener("input", renderInventory);
   $("#bodyFilter").addEventListener("change", renderInventory);
   $("#sortSelect").addEventListener("change", renderInventory);
+
+  $("#taskSearchInput")?.addEventListener("input", renderStockTasks);
+  $("#taskBodyFilter")?.addEventListener("change", renderStockTasks);
+  $("#taskTypeFilter")?.addEventListener("change", renderStockTasks);
   $("#variantBody").addEventListener("change", () => {
     renderVariantDesignOptions();
     renderVariantColorOptions();
@@ -1747,6 +2235,8 @@ function bindEvents() {
   $("#bulkVariantForm").addEventListener("submit", submitBulkVariant);
   $("#pinkoiProductForm").addEventListener("submit", submitPinkoiProduct);
   $("#productInventoryForm").addEventListener("submit", submitProductInventory);
+  $("#sizeChartForm").addEventListener("submit", submitSizeChart);
+  $("#applyDefaultSizeChartsBtn")?.addEventListener("click", applyDefaultSizeCharts);
 
   $("#pinkoiSearchInput")?.addEventListener("input", renderPinkoi);
   $("#pinkoiBodyFilter")?.addEventListener("change", renderPinkoi);
@@ -1805,6 +2295,11 @@ function bindEvents() {
 
     const editVariant = e.target.closest("[data-edit-variant]");
     if (editVariant) return openVariant(editVariant.dataset.editVariant);
+
+    const editSizeChart = e.target.closest("[data-edit-size-chart]");
+    if (editSizeChart) {
+      return openSizeChartDialog(editSizeChart.dataset.editSizeChart);
+    }
 
     const editInventory = e.target.closest("[data-edit-product-inventory]");
     if (editInventory) {

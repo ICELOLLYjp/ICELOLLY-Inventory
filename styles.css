@@ -390,3 +390,74 @@ textarea {
 .dual-stock-input { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; min-width: 112px; }
 .dual-stock-input input { min-width: 0; text-align: center; padding: 6px 4px; }
 .pinkoi-card-actions { gap: 8px; flex-wrap: wrap; }
+
+
+/* Stock Tasks */
+.task-toolbar {
+  grid-template-columns: minmax(240px, 1fr) 180px 210px;
+}
+
+.task-section {
+  margin-top: 22px;
+}
+
+.compact-title {
+  margin-bottom: 8px;
+}
+
+.compact-title h2 {
+  font-size: 16px;
+}
+
+.task-table th,
+.task-table td {
+  white-space: nowrap;
+}
+
+/* Body Size Chart */
+.size-chart-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.size-chart-card {
+  border: 1px solid #e8e8e3;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.size-chart-display-table,
+.size-chart-edit-table {
+  min-width: 620px;
+}
+
+.size-chart-display-table th,
+.size-chart-display-table td,
+.size-chart-edit-table th,
+.size-chart-edit-table td {
+  text-align: center;
+}
+
+.size-chart-display-table tbody th,
+.size-chart-edit-table tbody th {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.size-chart-edit-table input {
+  min-width: 88px;
+  text-align: center;
+}
+
+.size-chart-dialog {
+  width: min(820px, calc(100% - 24px));
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 700px) {
+  .task-toolbar {
+    grid-template-columns: 1fr;
+  }
+}

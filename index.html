@@ -23,6 +23,8 @@
 
     <nav class="tabs">
       <button class="tab active" data-tab="inventory">Inventory</button>
+      <button class="tab" data-tab="tasks">Stock Tasks</button>
+      <button class="tab" data-tab="sizeChart">Size Chart</button>
       <button class="tab" data-tab="masters">Masters</button>
       <button class="tab" data-tab="pinkoi">Pinkoi</button>
     </nav>
@@ -64,6 +66,105 @@
             <tbody id="inventoryRows"></tbody>
           </table>
         </div>
+      </section>
+
+
+      <section id="tasksTab" class="panel tabpanel hidden">
+        <div class="section-title">
+          <div>
+            <h2>Stock Tasks</h2>
+            <p class="muted">実在庫とPinkoi掲載在庫の差分から自動で判定します。</p>
+          </div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span>Pinkoi更新必要</span>
+            <strong id="taskNeedsUpdate">0</strong>
+          </div>
+          <div class="summary-card">
+            <span>制作候補</span>
+            <strong id="taskProductionCount">0</strong>
+          </div>
+          <div class="summary-card">
+            <span>Pinkoi在庫を増やせる</span>
+            <strong id="taskCanIncreaseCount">0</strong>
+          </div>
+          <div class="summary-card">
+            <span>在庫切れ</span>
+            <strong id="taskSoldOutCount">0</strong>
+          </div>
+        </div>
+
+        <div class="toolbar task-toolbar">
+          <input id="taskSearchInput" type="search" placeholder="Design、Color、Size、SKUを検索">
+          <select id="taskBodyFilter"><option value="">All Bodies</option></select>
+          <select id="taskTypeFilter">
+            <option value="all">All Tasks</option>
+            <option value="production">制作候補</option>
+            <option value="increase">Pinkoi在庫を増やせる</option>
+            <option value="soldout">在庫切れ</option>
+          </select>
+        </div>
+
+        <div class="task-section">
+          <div class="section-title compact-title">
+            <h2>制作候補</h2>
+            <span class="muted">Pinkoi掲載在庫 ＞ 実在庫</span>
+          </div>
+          <div class="table-wrap">
+            <table class="task-table">
+              <thead>
+                <tr>
+                  <th>Body</th>
+                  <th>Design</th>
+                  <th>Color</th>
+                  <th>Size</th>
+                  <th>実在庫</th>
+                  <th>Pinkoi</th>
+                  <th>不足</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="productionTaskRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="task-section">
+          <div class="section-title compact-title">
+            <h2>Pinkoi在庫更新候補</h2>
+            <span class="muted">実在庫 ＞ Pinkoi掲載在庫</span>
+          </div>
+          <div class="table-wrap">
+            <table class="task-table">
+              <thead>
+                <tr>
+                  <th>Body</th>
+                  <th>Design</th>
+                  <th>Color</th>
+                  <th>Size</th>
+                  <th>実在庫</th>
+                  <th>Pinkoi</th>
+                  <th>増やせる数</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="increaseTaskRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="sizeChartTab" class="panel tabpanel hidden">
+        <div class="section-title">
+          <div>
+            <h2>Body Size Chart</h2>
+            <p class="muted">各Bodyのメーカー公表サイズをcmで管理します。</p>
+          </div>
+          <button id="applyDefaultSizeChartsBtn" class="button">メーカー標準サイズを反映</button>
+        </div>
+        <div id="sizeChartCards" class="size-chart-grid"></div>
       </section>
 
       <section id="mastersTab" class="panel tabpanel hidden">
@@ -138,6 +239,43 @@
 
 
 
+
+  <dialog id="sizeChartDialog">
+    <form method="dialog" id="sizeChartForm" class="dialog-form size-chart-dialog">
+      <div class="section-title">
+        <div>
+          <h2>Size Chart</h2>
+          <p id="sizeChartDialogBodyName" class="muted"></p>
+        </div>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+
+      <input type="hidden" id="sizeChartBodyId">
+
+      <div class="table-wrap">
+        <table class="size-chart-edit-table">
+          <thead>
+            <tr>
+              <th>Size</th>
+              <th>身丈</th>
+              <th>身幅</th>
+              <th>肩幅</th>
+              <th>袖丈</th>
+            </tr>
+          </thead>
+          <tbody id="sizeChartEditRows"></tbody>
+        </table>
+      </div>
+
+      <p class="muted">単位: cm。未使用サイズは空欄のままで構いません。</p>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="productInventoryDialog">
     <form method="dialog" id="productInventoryForm" class="dialog-form wide-dialog">
       <div class="section-title">
@@ -210,7 +348,7 @@
       <div class="two-col">
         <label>
           商品カテゴリー
-          <input id="pinkoiCategory" value="ファッション > Tシャツ - 1">
+          <input id="pinkoiCategory" value="ファッション > Tシャツ メンズ - 16">
         </label>
 
         <label>
@@ -280,6 +418,8 @@
         タグ
         <input id="pinkoiTags" value="Tシャツ" placeholder="複数の場合は半角コンマで区切る">
       </label>
+
+      <p class="muted">商品説明の初期文は、選択したTシャツBodyの仕様に合わせて自動入力されます。保存後も編集できます。</p>
 
       <fieldset>
         <legend>日本語</legend>
