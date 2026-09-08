@@ -27,6 +27,37 @@ const seed = {
 };
 
 
+
+const PINKOI_TSHIRT_SIZES = ["S", "M", "L", "XL", "XXL"];
+
+function normalizePinkoiTshirtSize(value) {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replaceAll("Ｓ", "S")
+    .replaceAll("Ｍ", "M")
+    .replaceAll("Ｌ", "L")
+    .replaceAll("Ｘ", "X")
+    .replace(/\s+/g, "");
+
+  const aliases = {
+    "S": "S",
+    "M": "M",
+    "L": "L",
+    "XL": "XL",
+    "LL": "XL",
+    "XXL": "XXL",
+    "2XL": "XXL",
+    "2X": "XXL"
+  };
+
+  return aliases[raw] || raw;
+}
+
+function isValidPinkoiTshirtSize(value) {
+  return PINKOI_TSHIRT_SIZES.includes(normalizePinkoiTshirtSize(value));
+}
+
 const DEFAULT_BODY_SIZE_CHARTS = {
   Organic: {
     model: "TRUSS OGB-910",
@@ -182,30 +213,30 @@ The T shirt body, color, and material may be different depending on the design. 
 
 const BODY_PINKOI_COPY = {
   Organic: {
-    highlightJa: "ICELOLLYのオリジナルイラストをプリントした、100％オーガニックコットンのTシャツです。襟は二本針縫製で、着用を重ねても伸びにくい仕様です。",
+    highlightJa: "ICELOLLYのオリジナルイラストをプリントした、100％オーガニックコットンのTシャツです。やわらかく肌触りのよい生地で、毎日気持ちよく着られる一枚です。",
     descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
 
-ボディにはTRUSS OGB 910を使用。オーガニックコットン100％で、襟は二本針縫製を採用し、着用を重ねても伸びにくい仕様です。胴は脇に縫い目のない丸胴仕様で、すっきりとした着心地に仕上げられています。
+ボディにはTRUSS OGB 910を使用。100％オーガニックコットンを使用した、やわらかく肌触りのよい生地です。素肌にも心地よく、日常の中で気軽に着られるTシャツに仕上がっています。
 
-一枚でも着やすく、パンツやスカートなどさまざまなスタイルに合わせやすいアイテムです。日常はもちろん、旅先にも取り入れやすいTシャツです。
+襟は二本針縫製で、着用を重ねても伸びにくい仕様。胴は脇に縫い目のない丸胴仕様です。
 
-デザインごとにカラー展開が異なります。サイズは商品ページのサイズ表をご確認ください。`,
-    highlightEn: "An original ICELOLLY T shirt made with 100% organic cotton. The double needle collar is designed to help keep its shape for everyday wear.",
+素材にも心地よさにも目を向けた一枚として、ICELOLLYのイラストとともに長く楽しんでもらえたら嬉しいです。サイズは商品ページのサイズ表をご確認ください。`,
+    highlightEn: "An original ICELOLLY T shirt made with 100% organic cotton. The fabric has a soft, comfortable feel that is easy to enjoy every day.",
     descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
 
-It uses the TRUSS OGB 910 body made with 100% organic cotton. The collar has double needle stitching to help reduce stretching, and the body has a tubular construction without side seams.
+It uses the TRUSS OGB 910 body made with 100% organic cotton. The fabric has a soft and comfortable feel against the skin, making it an easy T shirt to wear every day.
 
-It is easy to wear on its own and simple to match with many styles. It also works well for travel and everyday use.
+The collar has double needle stitching to help reduce stretching, and the body has a tubular construction without side seams.
 
-Available colors depend on the design. Please check the size chart on the product page.`,
-    highlightZh: "印有 ICELOLLY 原創插畫的 T 恤，使用 100％ 有機棉製作。領口採用雙針縫製，較不易因反覆穿著而鬆弛。",
+A comfortable everyday piece that brings together thoughtful material choice and original ICELOLLY illustration. Please check the size chart on the product page.`,
+    highlightZh: "印有 ICELOLLY 原創插畫的 T 恤，使用 100％ 有機棉製作。布料柔軟親膚，適合每天舒適穿著。",
     descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
 
-T 恤使用 TRUSS OGB 910 版型，材質為 100％ 有機棉。領口採用雙針縫製，較不易因反覆穿著而鬆弛。衣身採圓筒無側縫結構，穿著感簡潔舒適。
+T 恤使用 TRUSS OGB 910 版型，材質為 100％ 有機棉。布料柔軟、觸感舒適，貼近肌膚穿著也很舒服，適合日常輕鬆搭配。
 
-單穿也很好搭配，可以輕鬆融入不同風格，日常穿著或旅行時都很適合。
+領口採用雙針縫製，較不易因反覆穿著而鬆弛；衣身採圓筒無側縫結構。
 
-不同設計的顏色選擇可能不同，尺寸請參考商品頁面的尺寸表。`
+我們希望把舒適的素材選擇與 ICELOLLY 的原創插畫結合成一件可以長久享受的日常 T 恤。尺寸請參考商品頁面的尺寸表。`
   },
 
   Vintage: {
@@ -283,6 +314,123 @@ function pinkoiCopyValue(product, key, bodyId) {
 
   // User edited copy is never overwritten.
   return saved;
+}
+
+
+const DESIGN_TAGS = {
+  "Bigwave": ["波", "wave", "海浪", "海"],
+  "SALTY": ["海", "ocean", "海洋", "summer"],
+  "Squids Night": ["イカ", "squid", "魷魚", "海洋"],
+  "Cherry": ["さくらんぼ", "cherry", "櫻桃", "フルーツ"],
+  "Orca Banana": ["シャチ", "orca", "虎鯨", "banana"],
+  "MONSTER BUILDING": ["建築", "architecture", "建築設計", "city"],
+  "Share the Pavement": ["ストリート", "street", "街頭", "urban"],
+  "Good Vibes": ["ポップ", "pop art", "流行插畫", "good vibes"],
+  "Space Odyssey RAY": ["エイ", "ray", "魟魚", "space"],
+  "Coral": ["サンゴ", "coral", "珊瑚", "海洋"],
+  "Safe Surf": ["サーフィン", "surf", "衝浪", "海"],
+  "Woo Hoo": ["ポップ", "pop art", "流行插畫", "fun"],
+  "Sink": ["イラスト", "illustration", "插畫", "graphic"],
+  "VACAY": ["旅行", "travel", "旅行設計", "vacation"],
+  "DEEP": ["ダイビング", "diving", "潛水", "海洋"],
+  "Gulls and Lemons": ["カモメ", "seagull", "海鷗", "lemon"],
+  "Encounters": ["イラスト", "illustration", "插畫", "encounter"],
+  "This is SUMMER": ["夏", "summer", "夏天", "海"],
+  "See You in Water": ["海", "ocean", "海洋", "water"],
+  "Whole Ocean Dive Club": ["ダイビング", "diving", "潛水", "海洋"],
+  "KYOTO": ["京都", "Kyoto", "日本", "Japan"],
+  "This is JAPAN": ["日本", "Japan", "日本設計", "Japanese design"]
+};
+
+function splitCommaList(value) {
+  return String(value || "")
+    .split(",")
+    .map(x => x.trim())
+    .filter(Boolean);
+}
+
+function uniqueLimited(values, limit = 10) {
+  const result = [];
+  const seen = new Set();
+
+  for (const value of values) {
+    const clean = String(value || "").trim();
+    if (!clean) continue;
+
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    result.push(clean);
+    if (result.length >= limit) break;
+  }
+
+  return result;
+}
+
+function bodyTagDefaults(body) {
+  if (body?.internalName === "Organic") {
+    return ["オーガニックコットン", "organic cotton", "有機棉"];
+  }
+  if (body?.internalName === "Vintage") {
+    return ["ヴィンテージ", "vintage", "復古"];
+  }
+  if (body?.internalName === "MIJ") {
+    return ["日本製", "made in Japan", "日本製造"];
+  }
+  return [];
+}
+
+function generatedPinkoiTags(bodyId, designId) {
+  const body = byId(state.bodies, bodyId);
+  const design = byId(state.designs, designId);
+
+  return uniqueLimited([
+    "Tシャツ",
+    "T shirt",
+    "T恤",
+    ...bodyTagDefaults(body),
+    ...(DESIGN_TAGS[design?.internalName] || ["イラスト", "illustration", "插畫", "graphic"])
+  ], 10);
+}
+
+function effectivePinkoiTags(product) {
+  const current = splitCommaList(product?.tags);
+  const generated = generatedPinkoiTags(product?.bodyId, product?.designId);
+
+  // Keep user-entered tags first and fill remaining slots with generated tags.
+  return uniqueLimited([...current, ...generated], 10).join(", ");
+}
+
+function isOrganicBodyId(bodyId) {
+  return byId(state.bodies, bodyId)?.internalName === "Organic";
+}
+
+function withoutEcoFriendlyOther(value) {
+  return splitCommaList(value)
+    .filter(x => x !== "環境に優しい商品")
+    .join(", ");
+}
+
+function effectivePinkoiOther(product) {
+  const items = splitCommaList(product?.other);
+
+  if (isOrganicBodyId(product?.bodyId) && !items.includes("環境に優しい商品")) {
+    items.unshift("環境に優しい商品");
+  }
+
+  return uniqueLimited(items, 5).join(", ");
+}
+
+function composePinkoiOther(rawOther, bodyId, ecoChecked) {
+  const items = splitCommaList(rawOther)
+    .filter(x => x !== "環境に優しい商品");
+
+  if (ecoChecked || isOrganicBodyId(bodyId)) {
+    items.unshift("環境に優しい商品");
+  }
+
+  return uniqueLimited(items, 5).join(", ");
 }
 
 const BODY_COLOR_RULES = {
@@ -1273,9 +1421,17 @@ function openPinkoiProduct(bodyId, designId) {
   $("#pinkoiMaterial").value = product?.material || "コットン";
   $("#pinkoiTarget").value = product?.target || "ユニセックス";
   $("#pinkoiShippingPlan").value = product?.shippingPlan || "Tシャツ発送";
-  $("#pinkoiOther").value = product?.other || "";
+  $("#pinkoiOther").value = withoutEcoFriendlyOther(product?.other || "");
+  $("#pinkoiEcoFriendly").checked =
+    isOrganicBodyId(bodyId) ||
+    splitCommaList(product?.other).includes("環境に優しい商品");
+
   $("#pinkoiImageUrls").value = product?.imageUrls || "";
-  $("#pinkoiTags").value = product?.tags || "Tシャツ";
+  $("#pinkoiTags").value = effectivePinkoiTags({
+    ...(product || {}),
+    bodyId,
+    designId
+  });
 
   $("#pinkoiHighlightJa").value = pinkoiCopyValue(product, "highlightJa", bodyId);
   $("#pinkoiDescriptionJa").value = pinkoiCopyValue(product, "descriptionJa", bodyId);
@@ -1324,9 +1480,13 @@ async function submitPinkoiProduct(e) {
     material: $("#pinkoiMaterial").value.trim(),
     target: $("#pinkoiTarget").value,
     shippingPlan: $("#pinkoiShippingPlan").value.trim(),
-    other: $("#pinkoiOther").value.trim(),
+    other: composePinkoiOther(
+      $("#pinkoiOther").value.trim(),
+      bodyId,
+      $("#pinkoiEcoFriendly").checked
+    ),
     imageUrls: $("#pinkoiImageUrls").value.trim(),
-    tags: $("#pinkoiTags").value.trim(),
+    tags: uniqueLimited(splitCommaList($("#pinkoiTags").value), 10).join(", "),
 
     highlightJa: $("#pinkoiHighlightJa").value.trim(),
     descriptionJa: $("#pinkoiDescriptionJa").value.trim(),
@@ -1629,6 +1789,11 @@ function validatePinkoiExport(groups) {
     }
     if (!product.material) problems.push(`${label}: 素材が必要です。`);
     if (!product.target) problems.push(`${label}: ターゲットが必要です。`);
+
+    const effectiveTags = splitCommaList(effectivePinkoiTags(product));
+    if (effectiveTags.length > 10) {
+      problems.push(`${label}: タグは10個以内にしてください。`);
+    }
     if (!product.highlightJa || product.highlightJa.length < 15) {
       problems.push(`${label}: 日本語のおすすめポイントを15文字以上入力してください。`);
     }
@@ -1638,7 +1803,7 @@ function validatePinkoiExport(groups) {
 
     variants.forEach(v => {
       const color = byId(state.colors, v.colorId);
-      const size = String(v.size || "").trim();
+      const size = normalizePinkoiTshirtSize(v.size);
       const qty = Number(v.pinkoiStock ?? 0);
 
       if (!color?.internalName) {
@@ -1646,6 +1811,8 @@ function validatePinkoiExport(groups) {
       }
       if (!size) {
         problems.push(`${label}: Sizeが未設定の在庫があります。`);
+      } else if (!isValidPinkoiTshirtSize(size)) {
+        problems.push(`${label}: サイズ「${v.size}」は使用できません。S / M / L / XL / XXL のいずれかにしてください。`);
       }
       if (!Number.isFinite(qty) || qty < 0 || qty > 50000) {
         problems.push(`${label}: Pinkoi在庫は0〜50000で入力してください。`);
@@ -1662,13 +1829,13 @@ function validatePinkoiExport(groups) {
 }
 
 function pinkoiVariantRows(product, variants) {
-  const sizeOrder = new Map(["XXS","XS","S","M","L","XL","XXL","3XL"].map((s, i) => [s, i]));
+  const sizeOrder = new Map(PINKOI_TSHIRT_SIZES.map((s, i) => [s, i]));
 
   return [...variants].sort((a, b) => {
     const ca = byId(state.colors, a.colorId)?.internalName || "";
     const cb = byId(state.colors, b.colorId)?.internalName || "";
-    const sa = sizeOrder.get(String(a.size).toUpperCase()) ?? 99;
-    const sb = sizeOrder.get(String(b.size).toUpperCase()) ?? 99;
+    const sa = sizeOrder.get(normalizePinkoiTshirtSize(a.size)) ?? 99;
+    const sb = sizeOrder.get(normalizePinkoiTshirtSize(b.size)) ?? 99;
     return ca.localeCompare(cb) || sa - sb;
   });
 }
@@ -1744,7 +1911,7 @@ async function exportPinkoiXlsx() {
       orderedVariants.forEach((v, index) => {
         const color = byId(state.colors, v.colorId);
         const first = index === 0;
-        const size = String(v.size || "").toUpperCase();
+        const size = normalizePinkoiTshirtSize(v.size);
         const stock = Number(v.pinkoiStock || 0);
 
         // A:AY = 1:51
@@ -1789,9 +1956,9 @@ async function exportPinkoiXlsx() {
 
         if (first) {
           excelSetCell(ws, row, 19, product.material);
-          excelSetCell(ws, row, 21, product.other || "");
+          excelSetCell(ws, row, 21, effectivePinkoiOther(product));
           excelSetCell(ws, row, 22, product.target);
-          excelSetCell(ws, row, 23, product.tags || "");
+          excelSetCell(ws, row, 23, effectivePinkoiTags(product));
           excelSetCell(ws, row, 24, product.highlightJa);
           excelSetCell(ws, row, 25, product.descriptionJa);
           excelSetCell(ws, row, 27, product.shippingPlan || "");
@@ -2030,7 +2197,7 @@ function openVariant(id=null) {
   $("#variantBody").value = v?.bodyId || state.bodies[0]?.id || "";
   renderVariantDesignOptions(v?.designId || "");
   renderVariantColorOptions(v?.colorId || "");
-  $("#variantSize").value = v?.size || "M";
+  $("#variantSize").value = normalizePinkoiTshirtSize(v?.size || "M");
   $("#variantSku").value = v?.sku || "";
   $("#variantStock").value = v?.stock ?? 0;
   $("#variantPinkoiStock").value = v?.pinkoiStock ?? 0;
@@ -2046,7 +2213,7 @@ async function submitVariant(e) {
     bodyId: $("#variantBody").value,
     designId: $("#variantDesign").value,
     colorId: $("#variantColor").value,
-    size: $("#variantSize").value.trim(),
+    size: normalizePinkoiTshirtSize($("#variantSize").value),
     sku: $("#variantSku").value.trim(),
     stock: Number($("#variantStock").value || 0),
     pinkoiStock: Number($("#variantPinkoiStock").value || 0),

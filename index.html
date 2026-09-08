@@ -405,9 +405,14 @@
 
         <label>
           その他
-          <input id="pinkoiOther" placeholder="例：環境に優しい商品">
+          <input id="pinkoiOther" placeholder="その他のPinkoi項目">
         </label>
       </div>
+
+      <label class="checkbox-line">
+        <input id="pinkoiEcoFriendly" type="checkbox">
+        環境に優しい商品
+      </label>
 
       <label>
         商品写真URL 任意（後から追加可）
@@ -415,9 +420,10 @@
       </label>
 
       <label>
-        タグ
-        <input id="pinkoiTags" value="Tシャツ" placeholder="複数の場合は半角コンマで区切る">
+        タグ（最大10個 / 日本語・English・繁體中文）
+        <input id="pinkoiTags" value="Tシャツ" placeholder="半角コンマで区切る">
       </label>
+      <p class="muted">BodyとDesignに合わせた検索用タグを自動で補います。</p>
 
       <p class="muted">商品説明の初期文は、選択したTシャツBodyの仕様に合わせて自動入力されます。保存後も編集できます。</p>
 
@@ -531,7 +537,15 @@
       <label>Body<select id="variantBody" required></select></label>
       <label>Design<select id="variantDesign" required></select></label>
       <label>Color<select id="variantColor" required></select></label>
-      <label>Size<input id="variantSize" placeholder="S / M / L / XL" required></label>
+      <label>Size
+        <select id="variantSize" required>
+          <option value="S">S</option>
+          <option value="M">M</option>
+          <option value="L">L</option>
+          <option value="XL">XL</option>
+          <option value="XXL">XXL</option>
+        </select>
+      </label>
       <label>SKU<input id="variantSku" placeholder="TS ORG WHALE GR M"></label>
 
       <div class="two-col">
@@ -593,6 +607,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js?v=20260908-0925"></script>
+  <script type="module" src="./app.js?v=20260908-0945"></script>
 </body>
 </html>
