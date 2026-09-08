@@ -674,21 +674,28 @@ function resolveTshirtMasterBody(bodyRef) {
   const bodies = tshirtMasterBodies();
   const raw = String(bodyRef || "").trim();
   if (!raw) return null;
+
   if (bodies[raw]) return bodies[raw];
+
   const key = normalizedTshirtKey(raw);
+
   return Object.values(bodies).find(body =>
-    [body?.id, body?.managementName, body?.salesName]
-      .filter(Boolean)
-      .some(value => normalizedTshirtKey(value) === key)
+    [
+      body?.id,
+      body?.managementName,
+      body?.salesName
+    ].filter(Boolean).some(value => normalizedTshirtKey(value) === key)
   ) || null;
 }
 
 function pinkoiBodyForTshirtBodyId(bodyId) {
-  const source = resolveTshirtMasterBody(bodyId) || {
-    id: String(bodyId || ""),
-    managementName: String(bodyId || ""),
-    salesName: ""
-  };
+  const source =
+    resolveTshirtMasterBody(bodyId) ||
+    {
+      id: String(bodyId || ""),
+      managementName: String(bodyId || ""),
+      salesName: ""
+    };
 
   const canonicalName = canonicalTshirtBodyName(source, bodyId);
   const sourceNames = [
@@ -785,19 +792,18 @@ function tshirtBodyForPinkoiBody(body) {
     ...(TSHIRT_MASTER_BODY_ALIASES[canonicalName] || [])
   ].filter(Boolean).map(normalizedTshirtKey);
 
-  const found = Object.values(tshirtMasterBodies()).find(source => {
+  return Object.values(tshirtMasterBodies()).find(source => {
     const sourceCanonical = canonicalTshirtBodyName(source, source.id);
-    const sourceNames = [source.managementName, source.salesName, source.id, sourceCanonical]
-      .filter(Boolean).map(normalizedTshirtKey);
-    return sourceNames.some(name => pinkoiNames.includes(name));
-  });
-  if (found) return found;
 
-  const inventoryBodyRefs = Object.keys(tshirtMasterData()?.inventory_v2 || {});
-  const colorBodyRefs = Object.values(tshirtMasterColors()).map(color => color?.bodyId).filter(Boolean);
-  const canonicalKey = normalizedTshirtKey(canonicalName);
-  const rawRef = [...inventoryBodyRefs, ...colorBodyRefs].find(ref => normalizedTshirtKey(ref) === canonicalKey);
-  return rawRef ? { id: rawRef, managementName: canonicalName, salesName: canonicalName } : null;
+    const sourceNames = [
+      source.managementName,
+      source.salesName,
+      source.id,
+      sourceCanonical
+    ].filter(Boolean).map(normalizedTshirtKey);
+
+    return sourceNames.some(name => pinkoiNames.includes(name));
+  }) || null;
 }
 
 function canonicalDesignForTshirtMaster(masterDesign) {
@@ -907,7 +913,13 @@ function tshirtColorForPinkoiColor(pinkoiColor, pinkoiBody, tshirtBody) {
   return Object.values(tshirtMasterColors()).find(source => {
     if (source.bodyId) {
       const sourceBody = pinkoiBodyForTshirtBodyId(source.bodyId);
-      if (sourceBody && normalizedTshirtKey(sourceBody.internalName) !== normalizedTshirtKey(pinkoiBody.internalName)) return false;
+      if (
+        sourceBody &&
+        normalizedTshirtKey(sourceBody.internalName) !==
+          normalizedTshirtKey(pinkoiBody.internalName)
+      ) {
+        return false;
+      }
     }
 
     const sourceNames = [
@@ -1114,16 +1126,17 @@ function tshirtMasterInventoryEntries() {
       for (const [colorId, sizeTree] of Object.entries(colorTree || {})) {
         const color = colors[colorId];
 
-        // Color master is authoritative for Body assignment. The new T-shirt
-        // app may store either a Body document id or the management name
-        // (Organic / Vintage / MIJ), so resolve both forms.
+        // Color master is authoritative for Body assignment.
+        // bodyId can be either a master key/id or a management name such as
+        // Organic / Vintage / MIJ.
         const resolvedBodyId = color?.bodyId || inventoryBodyId;
         const body =
           resolveTshirtMasterBody(resolvedBodyId) ||
           resolveTshirtMasterBody(inventoryBodyId) ||
           {
             id: String(resolvedBodyId || inventoryBodyId || ""),
-            managementName: String(resolvedBodyId || inventoryBodyId || "")
+            managementName: String(resolvedBodyId || inventoryBodyId || ""),
+            salesName: ""
           };
         const design = designs[designId];
 
@@ -1728,8 +1741,18 @@ async function initFirebase() {
 }
 
 async function login() {
-  const p = new firebaseApi.GoogleAuthProvider();
-  await firebaseApi.signInWithPopup(firebaseApi.auth, p);
+  try {
+    const p = new firebaseApi.GoogleAuthProvider();
+    await firebaseApi.signInWithPopup(firebaseApi.auth, p);
+  } catch (err) {
+    console.error("Google login failed", err);
+    const code = String(err?.code || "");
+    const message =
+      code.includes("popup-blocked")
+        ? "ログイン画面がブロックされました。Safariのポップアップ設定を確認してください。"
+        : `Googleログインに失敗しました${code ? `: ${code}` : ""}`;
+    showToast(message);
+  }
 }
 async function logout() { await firebaseApi.signOut(firebaseApi.auth); }
 

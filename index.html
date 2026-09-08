@@ -1144,4 +1144,203 @@ textarea {
       </div>
 
       <label class="checkbox-line">
-        <input id="pinkoiEcoFriendly" type="c
+        <input id="pinkoiEcoFriendly" type="checkbox">
+        環境に優しい商品
+      </label>
+
+      <label>
+        商品写真URL 任意（後から追加可）
+        <input id="pinkoiImageUrls" placeholder="複数の場合は半角コンマで区切る">
+      </label>
+
+      <label>
+        タグ（最大10個 / 日本語・English・繁體中文）
+        <input id="pinkoiTags" value="Tシャツ" placeholder="半角コンマで区切る">
+      </label>
+      <p class="muted">BodyとDesignに合わせた検索用タグを自動で補います。</p>
+
+      <p class="muted">商品説明の初期文は、選択したTシャツBodyの仕様に合わせて自動入力されます。保存後も編集できます。</p>
+
+      <fieldset>
+        <legend>日本語</legend>
+        <label>
+          おすすめポイント
+          <textarea id="pinkoiHighlightJa" rows="3" placeholder="15〜120文字"></textarea>
+        </label>
+        <label>
+          商品説明
+          <textarea id="pinkoiDescriptionJa" rows="7" placeholder="15〜10000文字"></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>English 任意</legend>
+        <label>
+          Highlight
+          <textarea id="pinkoiHighlightEn" rows="3"></textarea>
+        </label>
+        <label>
+          Description
+          <textarea id="pinkoiDescriptionEn" rows="6"></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>繁體中文 任意</legend>
+        <label>
+          推薦重點
+          <textarea id="pinkoiHighlightZh" rows="3"></textarea>
+        </label>
+        <label>
+          商品描述
+          <textarea id="pinkoiDescriptionZh" rows="6"></textarea>
+        </label>
+      </fieldset>
+
+      <label>
+        公開状態
+        <select id="pinkoiProductStatus">
+          <option value="draft">Draft</option>
+          <option value="selling">Selling</option>
+          <option value="hidden">Hidden</option>
+        </select>
+      </label>
+
+      <label>
+        管理メモ
+        <input id="pinkoiProductNote" placeholder="Pinkoiには出力されません">
+      </label>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="bulkVariantDialog">
+    <form method="dialog" id="bulkVariantForm" class="dialog-form">
+      <div class="section-title">
+        <h2>サイズ一括登録</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+
+      <label>Body<select id="bulkBody" required></select></label>
+      <label>Design<select id="bulkDesign" required></select></label>
+      <label>Color<select id="bulkColor" required></select></label>
+
+      <label>
+        SKU Prefix
+        <input id="bulkSkuPrefix" placeholder="自動生成">
+      </label>
+
+      <div class="bulk-size-table-wrap">
+        <table class="bulk-size-table">
+          <thead>
+            <tr>
+              <th>Size</th>
+              <th>Stock</th>
+              <th>Pinkoi</th>
+              <th>SKU</th>
+            </tr>
+          </thead>
+          <tbody id="bulkSizeRows"></tbody>
+        </table>
+      </div>
+
+      <div class="two-col">
+        <label>Pinkoi価格 JPY<input id="bulkPrice" type="number" min="0" value="1200"></label>
+        <label>Pinkoi商品ID<input id="bulkPinkoiId" placeholder="任意"></label>
+      </div>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">まとめて保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="variantDialog">
+    <form method="dialog" id="variantForm" class="dialog-form">
+      <div class="section-title">
+        <h2 id="variantDialogTitle">在庫を追加</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <input type="hidden" id="variantId">
+
+      <label>Body<select id="variantBody" required></select></label>
+      <label>Design<select id="variantDesign" required></select></label>
+      <label>Color<select id="variantColor" required></select></label>
+      <label>Size
+        <select id="variantSize" required>
+          <option value="S">S</option>
+          <option value="M">M</option>
+          <option value="L">L</option>
+          <option value="XL">XL</option>
+          <option value="XXL">XXL</option>
+        </select>
+      </label>
+      <label>SKU<input id="variantSku" placeholder="TS ORG WHALE GR M"></label>
+
+      <div class="two-col">
+        <label>実在庫<input id="variantStock" type="number" min="0" value="0" required></label>
+        <label>Pinkoi掲載在庫<input id="variantPinkoiStock" type="number" min="0" value="0" required></label>
+      </div>
+
+      <div class="two-col">
+        <label>Pinkoi価格 JPY<input id="variantPrice" type="number" min="0" value="1200"></label>
+        <label>Pinkoi商品ID<input id="variantPinkoiId" placeholder="任意"></label>
+      </div>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="masterDialog">
+    <form method="dialog" id="masterForm" class="dialog-form">
+      <div class="section-title">
+        <h2 id="masterDialogTitle">Master</h2>
+        <button value="cancel" class="icon-button" aria-label="閉じる">×</button>
+      </div>
+      <input type="hidden" id="masterType">
+      <input type="hidden" id="masterId">
+
+      <label>管理用名称<input id="masterInternalName" required></label>
+      <label>管理用コード<input id="masterCode" placeholder="ORG / WHALE / GR"></label>
+
+      <fieldset>
+        <legend>販売用名称</legend>
+        <label>日本語<input id="masterJa"></label>
+        <label>English<input id="masterEn"></label>
+        <label>繁體中文<input id="masterZh"></label>
+      </fieldset>
+
+      <fieldset id="designBodiesField" class="hidden">
+        <legend>使用するBody</legend>
+        <label><input type="checkbox" class="design-body-check" value="Organic"> Organic</label>
+        <label><input type="checkbox" class="design-body-check" value="Vintage"> Vintage</label>
+        <label><input type="checkbox" class="design-body-check" value="MIJ"> MIJ</label>
+      </fieldset>
+
+      <fieldset id="colorBodiesField" class="hidden">
+        <legend>使用するBody</legend>
+        <label><input type="checkbox" class="color-body-check" value="Organic"> Organic</label>
+        <label><input type="checkbox" class="color-body-check" value="Vintage"> Vintage</label>
+        <label><input type="checkbox" class="color-body-check" value="MIJ"> MIJ</label>
+      </fieldset>
+
+      <div class="dialog-actions">
+        <button value="cancel" class="button secondary">キャンセル</button>
+        <button type="submit" value="default" class="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="./app.js?v=20260908-2015"></script>
+</body>
+</html>
