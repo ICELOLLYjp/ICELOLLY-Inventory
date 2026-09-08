@@ -2002,12 +2002,15 @@ async function exportPinkoiXlsx() {
           excelSetCell(ws, row, 36, effectivePinkoiCopy(product, "descriptionZh") || "");
         }
 
-        // Custom specification localized values
+        // Color is a custom specification, so localized values are supplied.
         excelSetCell(ws, row, 31, displayName(color, "en") || color?.internalName || "");
-        excelSetCell(ws, row, 32, size);
-
         excelSetCell(ws, row, 37, displayName(color, "zhTW") || color?.internalName || "");
-        excelSetCell(ws, row, 38, size);
+
+        // Size is Pinkoi's regulated specification ("サイズ -- 規定").
+        // For regulated specifications, localized item fields must stay blank.
+        // Pinkoi handles their translation automatically.
+        excelSetCell(ws, row, 32, "");
+        excelSetCell(ws, row, 38, "");
 
         row++;
       });
