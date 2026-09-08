@@ -669,9 +669,26 @@ async function ensureCanonicalPinkoiBodiesForTshirtMaster() {
   return added;
 }
 
+
+function resolveTshirtMasterBody(bodyRef) {
+  const bodies = tshirtMasterBodies();
+  const raw = String(bodyRef || "").trim();
+  if (!raw) return null;
+  if (bodies[raw]) return bodies[raw];
+  const key = normalizedTshirtKey(raw);
+  return Object.values(bodies).find(body =>
+    [body?.id, body?.managementName, body?.salesName]
+      .filter(Boolean)
+      .some(value => normalizedTshirtKey(value) === key)
+  ) || null;
+}
+
 function pinkoiBodyForTshirtBodyId(bodyId) {
-  const source = tshirtMasterBodies()?.[bodyId];
-  if (!source) return null;
+  const source = resolveTshirtMasterBody(bodyId) || {
+    id: String(bodyId || ""),
+    managementName: String(bodyId || ""),
+    salesName: ""
+  };
 
   const canonicalName = canonicalTshirtBodyName(source, bodyId);
   const sourceNames = [
@@ -768,18 +785,19 @@ function tshirtBodyForPinkoiBody(body) {
     ...(TSHIRT_MASTER_BODY_ALIASES[canonicalName] || [])
   ].filter(Boolean).map(normalizedTshirtKey);
 
-  return Object.values(tshirtMasterBodies()).find(source => {
+  const found = Object.values(tshirtMasterBodies()).find(source => {
     const sourceCanonical = canonicalTshirtBodyName(source, source.id);
-
-    const sourceNames = [
-      source.managementName,
-      source.salesName,
-      source.id,
-      sourceCanonical
-    ].filter(Boolean).map(normalizedTshirtKey);
-
+    const sourceNames = [source.managementName, source.salesName, source.id, sourceCanonical]
+      .filter(Boolean).map(normalizedTshirtKey);
     return sourceNames.some(name => pinkoiNames.includes(name));
-  }) || null;
+  });
+  if (found) return found;
+
+  const inventoryBodyRefs = Object.keys(tshirtMasterData()?.inventory_v2 || {});
+  const colorBodyRefs = Object.values(tshirtMasterColors()).map(color => color?.bodyId).filter(Boolean);
+  const canonicalKey = normalizedTshirtKey(canonicalName);
+  const rawRef = [...inventoryBodyRefs, ...colorBodyRefs].find(ref => normalizedTshirtKey(ref) === canonicalKey);
+  return rawRef ? { id: rawRef, managementName: canonicalName, salesName: canonicalName } : null;
 }
 
 function canonicalDesignForTshirtMaster(masterDesign) {
@@ -887,7 +905,10 @@ function tshirtColorForPinkoiColor(pinkoiColor, pinkoiBody, tshirtBody) {
   ].filter(Boolean).map(normalizedTshirtKey);
 
   return Object.values(tshirtMasterColors()).find(source => {
-    if (source.bodyId && source.bodyId !== tshirtBody.id) return false;
+    if (source.bodyId) {
+      const sourceBody = pinkoiBodyForTshirtBodyId(source.bodyId);
+      if (sourceBody && normalizedTshirtKey(sourceBody.internalName) !== normalizedTshirtKey(pinkoiBody.internalName)) return false;
+    }
 
     const sourceNames = [
       source.pinkoiName,
@@ -1093,9 +1114,17 @@ function tshirtMasterInventoryEntries() {
       for (const [colorId, sizeTree] of Object.entries(colorTree || {})) {
         const color = colors[colorId];
 
-        // Color master is authoritative for Body assignment.
+        // Color master is authoritative for Body assignment. The new T-shirt
+        // app may store either a Body document id or the management name
+        // (Organic / Vintage / MIJ), so resolve both forms.
         const resolvedBodyId = color?.bodyId || inventoryBodyId;
-        const body = bodies[resolvedBodyId] || bodies[inventoryBodyId];
+        const body =
+          resolveTshirtMasterBody(resolvedBodyId) ||
+          resolveTshirtMasterBody(inventoryBodyId) ||
+          {
+            id: String(resolvedBodyId || inventoryBodyId || ""),
+            managementName: String(resolvedBodyId || inventoryBodyId || "")
+          };
         const design = designs[designId];
 
         for (const [sizeId, cell] of Object.entries(sizeTree || {})) {
