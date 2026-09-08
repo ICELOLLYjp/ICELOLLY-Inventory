@@ -216,7 +216,7 @@ const BODY_PINKOI_COPY = {
     highlightJa: "ICELOLLYのオリジナルイラストをプリントした、100％オーガニックコットンのTシャツです。やわらかく肌触りのよい生地で、毎日気持ちよく着られる一枚です。",
     descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
 
-ボディにはTRUSS OGB 910を使用。100％オーガニックコットンを使用した、やわらかく肌触りのよい生地です。素肌にも心地よく、日常の中で気軽に着られるTシャツに仕上がっています。
+100％オーガニックコットンを使用した、やわらかく肌触りのよい生地です。素肌にも心地よく、日常の中で気軽に着られるTシャツに仕上がっています。
 
 襟は二本針縫製で、着用を重ねても伸びにくい仕様。胴は脇に縫い目のない丸胴仕様です。
 
@@ -224,7 +224,7 @@ const BODY_PINKOI_COPY = {
     highlightEn: "An original ICELOLLY T shirt made with 100% organic cotton. The fabric has a soft, comfortable feel that is easy to enjoy every day.",
     descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
 
-It uses the TRUSS OGB 910 body made with 100% organic cotton. The fabric has a soft and comfortable feel against the skin, making it an easy T shirt to wear every day.
+Made with 100% organic cotton, the fabric has a soft and comfortable feel against the skin and is easy to wear every day.
 
 The collar has double needle stitching to help reduce stretching, and the body has a tubular construction without side seams.
 
@@ -232,7 +232,7 @@ A comfortable everyday piece that brings together thoughtful material choice and
     highlightZh: "印有 ICELOLLY 原創插畫的 T 恤，使用 100％ 有機棉製作。布料柔軟親膚，適合每天舒適穿著。",
     descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
 
-T 恤使用 TRUSS OGB 910 版型，材質為 100％ 有機棉。布料柔軟、觸感舒適，貼近肌膚穿著也很舒服，適合日常輕鬆搭配。
+使用 100％ 有機棉製作。布料柔軟、觸感舒適，貼近肌膚穿著也很舒服，適合日常輕鬆搭配。
 
 領口採用雙針縫製，較不易因反覆穿著而鬆弛；衣身採圓筒無側縫結構。
 
@@ -243,25 +243,25 @@ T 恤使用 TRUSS OGB 910 版型，材質為 100％ 有機棉。布料柔軟、�
     highlightJa: "6.6ozのコットン100％ボディにピグメント染めを施し、着古したようなヴィンテージ感を楽しめるTシャツです。着用や洗濯を重ねることで独特のエイジングが加わります。",
     descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
 
-ボディにはD FACTORY DF1101Dを使用。コットン100％の6.6oz生地にピグメント染めを施し、状態のよい古着のような風合いに仕上げられています。着用や洗濯を重ねることで、色合いの変化や独特のエイジングを楽しめます。
+コットン100％の6.6oz生地にピグメント染めを施し、着古したような自然なヴィンテージ感に仕上げています。着用や洗濯を重ねることで、色合いの変化や独特のエイジングを楽しめます。
 
-襟は二本針縫製、胴は丸胴仕様です。一枚でも存在感があり、シンプルなコーディネートにも合わせやすいTシャツです。
+襟は二本針縫製、胴は丸胴仕様です。
 
 染め製品の特性上、色合いやサイズ感には個体差があります。また、水濡れや摩擦、洗濯により色落ちや移染が生じる場合があります。`,
     highlightEn: "A 6.6 oz 100% cotton T shirt with pigment dye for a worn in vintage look. The color develops more character with wear and washing.",
     descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
 
-It uses the D FACTORY DF1101D body made from 100% cotton in a 6.6 oz fabric. Pigment dye gives it the look and feel of a well kept vintage T shirt, and the color develops more character with wear and washing.
+Made from 100% cotton in a 6.6 oz fabric, it is pigment dyed for a naturally worn in vintage look. The color develops more character with wear and washing.
 
-The collar uses double needle stitching and the body has a tubular construction. It has enough presence to wear on its own and is easy to match with simple outfits.
+The collar uses double needle stitching and the body has a tubular construction.
 
 Because this is a pigment dyed garment, color and size may vary slightly. Color may also fade or transfer with water, friction, or washing.`,
     highlightZh: "6.6 oz 的 100％ 棉質 T 恤，以顏料染色呈現自然的復古舊衣感。隨著穿著與清洗，顏色會逐漸產生獨特變化。",
     descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
 
-T 恤使用 D FACTORY DF1101D 版型，採用 100％ 棉、6.6 oz 布料與顏料染色，呈現如保存良好的復古 T 恤般的自然質感。隨著穿著與清洗，顏色會逐漸產生獨特的變化。
+採用 100％ 棉、6.6 oz 布料與顏料染色，呈現自然的復古舊衣質感。隨著穿著與清洗，顏色會逐漸產生獨特的變化。
 
-領口採雙針縫製，衣身為圓筒結構。單穿就有存在感，也很容易搭配簡單的日常造型。
+領口採雙針縫製，衣身為圓筒結構。
 
 由於染色製品的特性，顏色與尺寸可能有些微個體差異。遇水、摩擦或清洗時也可能產生褪色或移色情況。`
   },
@@ -270,27 +270,27 @@ T 恤使用 D FACTORY DF1101D 版型，採用 100％ 棉、6.6 oz 布料與顏�
     highlightJa: "日本国内で全工程を行った6.6ozの日本製Tシャツです。USAコットン100％のオープンエンド糸によるドライな風合いと、丸胴仕様、シングルステッチなど細部までこだわった一枚です。",
     descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
 
-ボディにはCOTTON RESEARCH CLUB JPC 001を使用。全ての工程を日本国内で行った日本製Tシャツです。USAコットン100％のオープンエンド糸を使った6.6oz生地は、ほどよい厚みがありながら軽さのあるドライな風合いが特徴です。
+全ての工程を日本国内で行った日本製Tシャツです。USAコットン100％のオープンエンド糸を使った6.6oz生地は、ほどよい厚みがありながら軽さのあるドライな風合いが特徴です。
 
-胴は脇に縫い目のない丸胴仕様。袖と裾にはクラシックなUSA製Tシャツを思わせるシングルステッチを採用しています。肩から首周りには補強の縫製が施され、日常で長く着やすい仕様です。
+胴は脇に縫い目のない丸胴仕様。袖と裾にはクラシックなシングルステッチを採用し、肩から首周りには補強の縫製が施されています。
 
-一枚でも着やすく、デニムやパンツなど幅広いスタイルに合わせやすいTシャツです。サイズは商品ページのサイズ表をご確認ください。`,
+サイズは商品ページのサイズ表をご確認ください。`,
     highlightEn: "A 6.6 oz T shirt made in Japan from 100% USA cotton. Open end yarn gives it a dry touch, with tubular construction and classic single stitch details.",
     descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
 
-It uses the COTTON RESEARCH CLUB JPC 001 body. Every production process is completed in Japan. The 6.6 oz fabric is made from 100% USA cotton with open end yarn, giving it a dry touch with a light feel.
+Every production process is completed in Japan. The 6.6 oz fabric is made from 100% USA cotton with open end yarn, giving it a dry touch with a light feel.
 
 The body has a tubular construction without side seams. The sleeves and hem use classic single stitching, and the shoulder and neck area is reinforced for added durability.
 
-It is easy to wear on its own and simple to match with denim, pants, and many everyday styles. Please check the size chart on the product page.`,
+Please check the size chart on the product page.`,
     highlightZh: "日本製 6.6 oz T 恤，使用 100％ 美國棉與開端紡紗。布料帶有乾爽質感，並採用圓筒衣身與經典單針縫製細節。",
     descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
 
-T 恤使用 COTTON RESEARCH CLUB JPC 001 版型，所有生產工程均在日本國內完成。6.6 oz 布料使用 100％ 美國棉與開端紡紗，具有適度厚度，同時保有輕盈乾爽的質感。
+所有生產工程均在日本國內完成。6.6 oz 布料使用 100％ 美國棉與開端紡紗，具有適度厚度，同時保有輕盈乾爽的質感。
 
-衣身採圓筒無側縫結構，袖口與下擺使用經典單針縫製，肩部與領口周圍也有加強縫製，提高日常穿著的耐用度。
+衣身採圓筒無側縫結構，袖口與下擺使用經典單針縫製，肩部與領口周圍也有加強縫製。
 
-單穿也很好搭配，可輕鬆搭配牛仔褲、長褲等多種日常造型。尺寸請參考商品頁面的尺寸表。`
+尺寸請參考商品頁面的尺寸表。`
   }
 };
 
