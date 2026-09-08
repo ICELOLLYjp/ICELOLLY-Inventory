@@ -161,7 +161,7 @@
           <div>
             <h2>Body Size Chart</h2>
             <p class="muted">各Bodyのメーカー公表サイズをcmで管理します。</p>
-            <p class="muted">この寸法表は管理用です。Pinkoi一括登録ではS / M / L / XL / XXLの規定サイズのみ登録し、Pinkoiのサイズ表は商品登録後に設定します。</p>
+            <p class="muted">Pinkoiの入力画面と同じ「A 肩幅 / B バスト / C 身丈 / D 袖丈」の順で表示します。商品登録後、Pinkoiのサイズ表へそのまま転記してください。</p>
           </div>
           <button id="applyDefaultSizeChartsBtn" class="button">メーカー標準サイズを反映</button>
         </div>
@@ -257,11 +257,11 @@
         <table class="size-chart-edit-table">
           <thead>
             <tr>
-              <th>Size</th>
-              <th>身丈</th>
-              <th>身幅</th>
-              <th>肩幅</th>
-              <th>袖丈</th>
+              <th>仕様</th>
+              <th>A 肩幅</th>
+              <th>B バスト</th>
+              <th>C 身丈</th>
+              <th>D 袖丈</th>
             </tr>
           </thead>
           <tbody id="sizeChartEditRows"></tbody>
@@ -608,6 +608,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js?v=20260908-1030"></script>
+  <script type="module" src="./app.js?v=20260908-1025"></script>
 </body>
 </html>

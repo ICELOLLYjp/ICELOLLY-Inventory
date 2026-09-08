@@ -1041,10 +1041,10 @@ function renderStockTasks() {
 
 
 const SIZE_CHART_FIELDS = [
-  { key: "length", label: "身丈" },
-  { key: "width", label: "身幅" },
-  { key: "shoulder", label: "肩幅" },
-  { key: "sleeve", label: "袖丈" }
+  { key: "shoulder", label: "A 肩幅" },
+  { key: "width", label: "B バスト" },
+  { key: "length", label: "C 身丈" },
+  { key: "sleeve", label: "D 袖丈" }
 ];
 
 function sizeChartValue(body, size, key) {
@@ -1063,13 +1063,13 @@ function renderSizeCharts() {
   const sizes = APP_CONFIG.sizes || ["S", "M", "L", "XL", "XXL"];
 
   target.innerHTML = state.bodies.map(body => {
-    const rows = SIZE_CHART_FIELDS.map(field => `
+    const rows = sizes.map(size => `
       <tr>
-        <th>${esc(field.label)}</th>
-        ${sizes.map(size => {
-          const value = sizeChartValue(body, size, field.key);
-          return `<td>${value === "" ? "—" : esc(value)}</td>`;
-        }).join("")}
+        <th>${esc(size)}</th>
+        <td>${esc(sizeChartValue(body, size, "shoulder") || "—")}</td>
+        <td>${esc(sizeChartValue(body, size, "width") || "—")}</td>
+        <td>${esc(sizeChartValue(body, size, "length") || "—")}</td>
+        <td>${esc(sizeChartValue(body, size, "sleeve") || "—")}</td>
       </tr>
     `).join("");
 
@@ -1087,11 +1087,14 @@ function renderSizeCharts() {
         </div>
 
         <div class="table-wrap">
-          <table class="size-chart-display-table">
+          <table class="size-chart-display-table pinkoi-size-chart">
             <thead>
               <tr>
-                <th>cm</th>
-                ${sizes.map(size => `<th>${esc(size)}</th>`).join("")}
+                <th>仕様</th>
+                <th>A 肩幅</th>
+                <th>B バスト</th>
+                <th>C 身丈</th>
+                <th>D 袖丈</th>
               </tr>
             </thead>
             <tbody>
@@ -1099,11 +1102,14 @@ function renderSizeCharts() {
             </tbody>
           </table>
         </div>
+
+        <p class="muted size-chart-note">
+          Pinkoi入力順：A 肩幅 / B バスト / C 身丈 / D 袖丈
+        </p>
       </article>
     `;
   }).join("") || `<div class="muted">Bodyが登録されていません。</div>`;
 }
-
 
 async function applyDefaultSizeCharts() {
   const targets = state.bodies.filter(body => defaultSizeChartForBody(body));
