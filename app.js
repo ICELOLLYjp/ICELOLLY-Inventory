@@ -267,28 +267,34 @@ Because this is a pigment dyed garment, color and size may vary slightly. Color 
   },
 
   MIJ: {
-    highlightJa: "日本国内で全工程を行った6.6ozの日本製Tシャツです。USAコットン100％のオープンエンド糸によるドライな風合いと、丸胴仕様、シングルステッチなど細部までこだわった一枚です。",
+    highlightJa: "全工程を日本国内で行った6.6ozの日本製Tシャツです。USAコットン100％のオープンエンド糸による、ドライで軽やかな風合いが特徴です。",
     descriptionJa: `ICELOLLYのオリジナルイラストを使ったTシャツです。海や自然、旅からインスピレーションを受けたデザインを中心に制作しています。
 
-全ての工程を日本国内で行った日本製Tシャツです。USAコットン100％のオープンエンド糸を使った6.6oz生地は、ほどよい厚みがありながら軽さのあるドライな風合いが特徴です。
+紡績から生地、縫製まで全ての工程を日本国内で行った日本製Tシャツです。USAコットン100％のオープンエンド糸を使用した6.6oz生地は、一般的なTシャツよりやや厚みがありながら、ごわつきにくく軽やかなドライタッチが特徴です。
 
-胴は脇に縫い目のない丸胴仕様。袖と裾にはクラシックなシングルステッチを採用し、肩から首周りには補強の縫製が施されています。
+繊維の中に空気を含むオープンエンド糸ならではの吸湿性と速乾性があり、さらっとした着心地を楽しめます。
+
+胴は脇に縫い目のない丸胴仕様。袖と裾はクラシックなシングルステッチで仕上げ、肩から首周りには縫い目の凹凸を抑えながら強度を高める補強が施されています。
 
 サイズは商品ページのサイズ表をご確認ください。`,
-    highlightEn: "A 6.6 oz T shirt made in Japan from 100% USA cotton. Open end yarn gives it a dry touch, with tubular construction and classic single stitch details.",
+    highlightEn: "A 6.6 oz T shirt made entirely in Japan from 100% USA cotton. Open end yarn gives the fabric a dry, light feel with comfortable moisture absorption and quick drying performance.",
     descriptionEn: `This T shirt features an original illustration by ICELOLLY, inspired by the ocean, nature, travel, and everyday moments.
 
-Every production process is completed in Japan. The 6.6 oz fabric is made from 100% USA cotton with open end yarn, giving it a dry touch with a light feel.
+Every production process, from yarn and fabric to sewing, is completed in Japan. The 6.6 oz fabric is made from 100% USA cotton with open end yarn. It has a slightly heavier weight than a typical T shirt while keeping a light, dry feel without excessive stiffness.
 
-The body has a tubular construction without side seams. The sleeves and hem use classic single stitching, and the shoulder and neck area is reinforced for added durability.
+The open end yarn structure helps provide moisture absorption and quick drying comfort.
+
+The body has a tubular construction without side seams. The sleeves and hem use classic single stitching, while reinforcement around the shoulders and back of the neck helps reduce seam bulk and improve strength.
 
 Please check the size chart on the product page.`,
-    highlightZh: "日本製 6.6 oz T 恤，使用 100％ 美國棉與開端紡紗。布料帶有乾爽質感，並採用圓筒衣身與經典單針縫製細節。",
+    highlightZh: "全程於日本國內製作的 6.6 oz 日本製 T 恤，使用 100％ 美國棉開端紡紗，具有乾爽、輕盈的穿著質感。",
     descriptionZh: `這款 T 恤使用 ICELOLLY 的原創插畫設計，作品靈感來自海洋、自然、旅行與日常生活。
 
-所有生產工程均在日本國內完成。6.6 oz 布料使用 100％ 美國棉與開端紡紗，具有適度厚度，同時保有輕盈乾爽的質感。
+從紡紗、布料到縫製，所有製作工程均在日本國內完成。6.6 oz 布料使用 100％ 美國棉開端紡紗，比一般 T 恤稍有厚度，同時保有不易僵硬的輕盈乾爽質感。
 
-衣身採圓筒無側縫結構，袖口與下擺使用經典單針縫製，肩部與領口周圍也有加強縫製。
+開端紡紗的結構讓纖維中含有較多空氣，具有良好的吸濕與快乾特性，穿著感舒適清爽。
+
+衣身採圓筒無側縫結構，袖口與下擺使用經典單針縫製，肩部至後領周圍另有補強縫製，可減少縫線凹凸感並提高強度。
 
 尺寸請參考商品頁面的尺寸表。`
   }
@@ -299,6 +305,22 @@ function defaultPinkoiCopyForBody(bodyId) {
   return BODY_PINKOI_COPY[body?.internalName] || DEFAULT_PINKOI_COPY;
 }
 
+function isLegacyBodyDescription(value) {
+  const text = String(value || "").toLowerCase();
+
+  return [
+    "truss ogb",
+    "ogb-910",
+    "ogb 910",
+    "d factory",
+    "d-factory",
+    "df1101d",
+    "cotton research club",
+    "jpc-001",
+    "jpc 001"
+  ].some(marker => text.includes(marker));
+}
+
 function pinkoiCopyValue(product, key, bodyId) {
   const saved = product?.[key];
   const bodyDefaults = defaultPinkoiCopyForBody(bodyId);
@@ -306,14 +328,22 @@ function pinkoiCopyValue(product, key, bodyId) {
   // Blank values use the body specific default.
   if (!saved) return bodyDefaults[key] || "";
 
-  // If an older product simply saved the former generic default,
-  // upgrade the editor to the new body specific copy.
+  // Upgrade the former generic default.
   if (saved === DEFAULT_PINKOI_COPY[key]) {
     return bodyDefaults[key] || saved;
   }
 
-  // User edited copy is never overwritten.
+  // Upgrade older body-specific copy that exposed maker names or model numbers.
+  if (isLegacyBodyDescription(saved)) {
+    return bodyDefaults[key] || saved;
+  }
+
+  // User-edited copy that does not contain legacy maker/model references is preserved.
   return saved;
+}
+
+function effectivePinkoiCopy(product, key) {
+  return pinkoiCopyValue(product, key, product?.bodyId);
 }
 
 
@@ -1049,7 +1079,6 @@ function renderSizeCharts() {
           <div>
             <h2>${esc(body.internalName)}</h2>
             <p class="muted">${esc(displayName(body, "en") || "")}</p>
-            <p class="muted">${esc(body.bodyModel || defaultSizeChartForBody(body)?.model || "")}</p>
           </div>
           <button class="button secondary small"
                   data-edit-size-chart="${esc(body.id)}">
@@ -1362,10 +1391,11 @@ function normalizedPinkoiTshirtCategory(value) {
   if (
     !category ||
     category === "ファッション > Tシャツ - 1" ||
+    category === "ファッション > Tシャツ メンズ - 16" ||
     category === "Tシャツ" ||
     category === "Tシャツ メンズ"
   ) {
-    return "ファッション > Tシャツ メンズ - 16";
+    return "ファッション > Tシャツ - 1";
   }
 
   return category;
@@ -1959,17 +1989,17 @@ async function exportPinkoiXlsx() {
           excelSetCell(ws, row, 21, effectivePinkoiOther(product));
           excelSetCell(ws, row, 22, product.target);
           excelSetCell(ws, row, 23, effectivePinkoiTags(product));
-          excelSetCell(ws, row, 24, product.highlightJa);
-          excelSetCell(ws, row, 25, product.descriptionJa);
+          excelSetCell(ws, row, 24, effectivePinkoiCopy(product, "highlightJa"));
+          excelSetCell(ws, row, 25, effectivePinkoiCopy(product, "descriptionJa"));
           excelSetCell(ws, row, 27, product.shippingPlan || "");
 
           excelSetCell(ws, row, 28, titleEn || "");
-          excelSetCell(ws, row, 29, product.highlightEn || "");
-          excelSetCell(ws, row, 30, product.descriptionEn || "");
+          excelSetCell(ws, row, 29, effectivePinkoiCopy(product, "highlightEn") || "");
+          excelSetCell(ws, row, 30, effectivePinkoiCopy(product, "descriptionEn") || "");
 
           excelSetCell(ws, row, 34, titleZh || "");
-          excelSetCell(ws, row, 35, product.highlightZh || "");
-          excelSetCell(ws, row, 36, product.descriptionZh || "");
+          excelSetCell(ws, row, 35, effectivePinkoiCopy(product, "highlightZh") || "");
+          excelSetCell(ws, row, 36, effectivePinkoiCopy(product, "descriptionZh") || "");
         }
 
         // Custom specification localized values
