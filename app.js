@@ -1,4 +1,5 @@
-import { APP_CONFIG } from "./firebase-config.js";
+let APP_CONFIG = null;
+const APP_VERSION = "20260908-0846";
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -351,6 +352,16 @@ function localSave() {
 }
 
 async function initFirebase() {
+  $("#modeBadge").textContent = "CONNECTING";
+  $("#connectionMessage").textContent = `v${APP_VERSION}`;
+
+  const configMod = await import("./firebase-config.js?v=20260908-0846");
+  APP_CONFIG = configMod.APP_CONFIG;
+
+  if (!APP_CONFIG) {
+    throw new Error("APP_CONFIG が読み込めませんでした");
+  }
+
   if (APP_CONFIG.demoMode) {
     const data = localLoad();
     Object.assign(state, data);
@@ -374,6 +385,7 @@ async function initFirebase() {
   firebaseApi = { ...authMod, ...fsMod, auth, db };
   state.firebaseReady = true;
   $("#modeBadge").textContent = "FIRESTORE";
+  $("#connectionMessage").textContent = `v${APP_VERSION}`;
 
   authMod.onAuthStateChanged(auth, user => {
     state.user = user || null;
@@ -2330,5 +2342,13 @@ function bindEvents() {
 bindEvents();
 initFirebase().catch(err => {
   console.error(err);
-  alert("初期化に失敗しました。firebase-config.js を確認してください。");
+  const badge = $("#modeBadge");
+  const message = $("#connectionMessage");
+
+  if (badge) badge.textContent = "ERROR";
+  if (message) {
+    message.textContent = `v${APP_VERSION} / ${err?.message || String(err)}`;
+  }
+
+  alert(`初期化に失敗しました。\n${err?.message || err}`);
 });

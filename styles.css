@@ -461,3 +461,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+.connection-message {
+  font-size: 11px;
+  color: #777;
+  max-width: 340px;
+  overflow-wrap: anywhere;
+}

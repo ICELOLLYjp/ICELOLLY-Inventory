@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ICELOLLY Pinkoi Inventory</title>
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=20260908-0846">
 </head>
 <body>
   <div id="app">
@@ -14,7 +14,8 @@
         <h1>Pinkoi Inventory</h1>
       </div>
       <div class="account">
-        <span id="modeBadge" class="badge">DEMO</span>
+        <span id="modeBadge" class="badge">CONNECTING</span>
+        <span id="connectionMessage" class="connection-message"></span>
         <span id="userLabel"></span>
         <button id="loginBtn" class="button secondary">Google Login</button>
         <button id="logoutBtn" class="button secondary hidden">Logout</button>
@@ -593,6 +594,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="./app.js?v=20260908-0846"></script>
 </body>
 </html>
