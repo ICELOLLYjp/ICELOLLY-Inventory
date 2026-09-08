@@ -807,6 +807,67 @@ function tshirtBodyForPinkoiBody(body) {
 }
 
 
+
+function resolveTshirtMasterDesign(designRef) {
+  const designs = tshirtMasterDesigns();
+  const raw = String(designRef || "").trim();
+  if (!raw) return null;
+
+  if (designs[raw]) return designs[raw];
+
+  const key = normalizedTshirtKey(raw);
+
+  return Object.values(designs).find(design =>
+    [
+      design?.id,
+      design?.managementName,
+      design?.salesName,
+      design?.legacyKey
+    ].filter(Boolean).some(value => normalizedTshirtKey(value) === key)
+  ) || null;
+}
+
+function resolveTshirtMasterColor(colorRef) {
+  const colors = tshirtMasterColors();
+  const raw = String(colorRef || "").trim();
+  if (!raw) return null;
+
+  if (colors[raw]) return colors[raw];
+
+  const key = normalizedTshirtKey(raw);
+
+  return Object.values(colors).find(color =>
+    [
+      color?.id,
+      color?.managementName,
+      color?.salesName,
+      color?.pinkoiName,
+      color?.legacyKey
+    ].filter(Boolean).some(value => normalizedTshirtKey(value) === key)
+  ) || null;
+}
+
+function resolveTshirtMasterSize(sizeRef) {
+  const sizes = tshirtMasterSizes();
+  const raw = String(sizeRef || "").trim();
+  if (!raw) return null;
+
+  if (sizes[raw]) return sizes[raw];
+
+  const normalizedSize = normalizePinkoiTshirtSize(raw);
+
+  return Object.values(sizes).find(size =>
+    [
+      size?.id,
+      size?.managementName,
+      size?.salesName
+    ].filter(Boolean).some(value =>
+      normalizePinkoiTshirtSize(value) === normalizedSize ||
+      normalizedTshirtKey(value) === normalizedTshirtKey(raw)
+    )
+  ) || null;
+}
+
 function canonicalPinkoiDesignNameFromTshirtMaster(masterDesign) {
   if (!masterDesign) return "";
 
@@ -876,8 +937,14 @@ async function ensurePinkoiDesignsForTshirtMaster() {
   let added = 0;
 
   for (const designId of usedDesignIds) {
-    const masterDesign = tshirtMasterDesigns()?.[designId];
-    if (!masterDesign) continue;
+    const masterDesign =
+      resolveTshirtMasterDesign(designId) ||
+      {
+        id: String(designId || ""),
+        managementName: String(designId || ""),
+        salesName: String(designId || ""),
+        legacyKey: String(designId || "")
+      };
 
     const canonicalName = canonicalPinkoiDesignNameFromTshirtMaster(masterDesign);
     if (!canonicalName) continue;
@@ -1104,14 +1171,7 @@ function missingLegacyDesignNames() {
 }
 
 function masterDesignBySourceName(sourceName) {
-  const key = normalizedTshirtKey(sourceName);
-  return Object.values(tshirtMasterDesigns()).find(masterDesign =>
-    [
-      masterDesign.managementName,
-      masterDesign.salesName,
-      masterDesign.legacyKey
-    ].filter(Boolean).some(name => normalizedTshirtKey(name) === key)
-  ) || null;
+  return resolveTshirtMasterDesign(sourceName);
 }
 
 function makeDesignCode(name) {
@@ -1250,7 +1310,14 @@ function tshirtMasterInventoryEntries() {
   for (const [inventoryBodyId, designTree] of Object.entries(inventory)) {
     for (const [designId, colorTree] of Object.entries(designTree || {})) {
       for (const [colorId, sizeTree] of Object.entries(colorTree || {})) {
-        const color = colors[colorId];
+        const color =
+          resolveTshirtMasterColor(colorId) ||
+          {
+            id: String(colorId || ""),
+            managementName: String(colorId || ""),
+            salesName: String(colorId || ""),
+            pinkoiName: String(colorId || "")
+          };
 
         // Color master is authoritative for Body assignment.
         // bodyId can be either a master key/id or a management name such as
@@ -1264,9 +1331,25 @@ function tshirtMasterInventoryEntries() {
             managementName: String(resolvedBodyId || inventoryBodyId || ""),
             salesName: ""
           };
-        const design = designs[designId];
+
+        const design =
+          resolveTshirtMasterDesign(designId) ||
+          {
+            id: String(designId || ""),
+            managementName: String(designId || ""),
+            salesName: String(designId || ""),
+            legacyKey: String(designId || "")
+          };
 
         for (const [sizeId, cell] of Object.entries(sizeTree || {})) {
+          const size =
+            resolveTshirtMasterSize(sizeId) ||
+            {
+              id: String(sizeId || ""),
+              managementName: String(sizeId || ""),
+              salesName: String(sizeId || "")
+            };
+
           const rawQty =
             typeof cell === "number"
               ? cell
@@ -1279,7 +1362,7 @@ function tshirtMasterInventoryEntries() {
             body,
             design,
             color,
-            size: sizes[sizeId],
+            size,
             bodyId: resolvedBodyId,
             designId,
             colorId,
