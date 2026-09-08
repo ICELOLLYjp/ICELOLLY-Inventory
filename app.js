@@ -593,6 +593,13 @@ async function reconcileLegacyStockToPinkoi(force = false) {
         const bodyMaster = canonicalMasterByName(state.bodies, bodyName);
         if (!bodyMaster) continue;
 
+        // A deleted Design × Body combination must not be recreated by the
+        // legacy T-shirt stock realtime sync.
+        if (Array.isArray(designMaster.disabledBodyNames) &&
+            designMaster.disabledBodyNames.includes(bodyName)) {
+          continue;
+        }
+
         for (const [canonicalColorName, legacyColorName] of Object.entries(colorMap)) {
           const colorMaster = canonicalMasterByName(state.colors, canonicalColorName);
           if (!colorMaster) continue;
@@ -746,6 +753,7 @@ let firebaseApi = null;
 let unsubscribers = [];
 let XLSXLib = null;
 let selectedPinkoiProductKeys = new Set();
+let selectedInventoryProductKeys = new Set();
 
 // Firestore上ではPinkoi専用コレクションを使います。
 // 既存のTシャツ在庫と同じFirebaseプロジェクトを使ってもデータは混ざりません。
@@ -1104,6 +1112,239 @@ function filteredInventory() {
   return rows;
 }
 
+
+function inventoryProductKey(bodyId, designId) {
+  return `${bodyId}__${designId}`;
+}
+
+function inventoryProductParts(key) {
+  const [bodyId, designId] = String(key || "").split("__");
+  return { bodyId, designId };
+}
+
+function visibleInventoryProductKeys() {
+  const keys = new Set();
+  filteredInventory().forEach(v => keys.add(inventoryProductKey(v.bodyId, v.designId)));
+  return [...keys];
+}
+
+function updateInventorySelectionCount() {
+  const el = $("#inventorySelectedCount");
+  if (el) el.textContent = selectedInventoryProductKeys.size;
+}
+
+function selectVisibleInventoryProducts() {
+  visibleInventoryProductKeys().forEach(key => selectedInventoryProductKeys.add(key));
+  updateInventorySelectionCount();
+  renderInventory();
+}
+
+function clearInventorySelection() {
+  selectedInventoryProductKeys.clear();
+  updateInventorySelectionCount();
+  renderInventory();
+}
+
+async function clearDesignBodyDeletionBlock(bodyId, designId) {
+  const design = byId(state.designs, designId);
+  const body = byId(state.bodies, bodyId);
+  if (!design || !body) return;
+
+  const disabled = Array.isArray(design.disabledBodyNames)
+    ? [...design.disabledBodyNames]
+    : [];
+
+  if (!disabled.includes(body.internalName)) return;
+
+  const next = disabled.filter(name => name !== body.internalName);
+
+  if (APP_CONFIG.demoMode) {
+    design.disabledBodyNames = next;
+    localSave();
+    return;
+  }
+
+  await firebaseApi.setDoc(
+    firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.designs, design.id),
+    {
+      disabledBodyNames: next,
+      updatedAt: new Date().toISOString()
+    },
+    { merge: true }
+  );
+
+  design.disabledBodyNames = next;
+}
+
+function selectedInventoryVariants() {
+  if (!selectedInventoryProductKeys.size) return [];
+
+  return state.inventory.filter(v =>
+    selectedInventoryProductKeys.has(inventoryProductKey(v.bodyId, v.designId))
+  );
+}
+
+async function bulkSetSelectedPinkoiStock(mode) {
+  const variants = selectedInventoryVariants();
+
+  if (!variants.length) {
+    alert("処理するDesignを選択してください。");
+    return;
+  }
+
+  const label = mode === "zero"
+    ? "選択商品のPinkoi在庫をすべて0にしますか？"
+    : "選択商品のPinkoi在庫を実在庫と同じ数に揃えますか？";
+
+  if (!confirm(label)) return;
+
+  let changed = 0;
+
+  if (APP_CONFIG.demoMode) {
+    for (const v of variants) {
+      const nextPinkoi = mode === "zero" ? 0 : Math.max(0, Number(v.stock || 0));
+      if (Number(v.pinkoiStock || 0) === nextPinkoi) continue;
+      v.pinkoiStock = nextPinkoi;
+      v.updatedAt = new Date().toISOString();
+      changed++;
+    }
+    localSave();
+    render();
+    showToast(`${changed}件のPinkoi在庫を更新しました`);
+    return;
+  }
+
+  const writes = [];
+
+  for (const v of variants) {
+    const nextPinkoi = mode === "zero" ? 0 : Math.max(0, Number(v.stock || 0));
+    if (Number(v.pinkoiStock || 0) === nextPinkoi) continue;
+
+    writes.push(
+      firebaseApi.setDoc(
+        firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.inventory, v.id),
+        {
+          pinkoiStock: nextPinkoi,
+          updatedAt: new Date().toISOString()
+        },
+        { merge: true }
+      )
+    );
+    changed++;
+  }
+
+  if (writes.length) await Promise.all(writes);
+
+  showToast(`${changed}件のPinkoi在庫を更新しました`);
+}
+
+async function deleteSelectedInventoryProducts() {
+  if (!selectedInventoryProductKeys.size) {
+    alert("削除するDesignを選択してください。");
+    return;
+  }
+
+  const selected = [...selectedInventoryProductKeys].map(key => ({
+    key,
+    ...inventoryProductParts(key)
+  }));
+
+  const labels = selected.map(({ bodyId, designId }) => {
+    const body = byId(state.bodies, bodyId)?.internalName || "?";
+    const design = byId(state.designs, designId)?.internalName || "?";
+    return `${design} / ${body}`;
+  });
+
+  const ok = confirm(
+    `選択した ${selected.length} 商品をPinkoi Inventoryから削除します。\n\n` +
+    `${labels.slice(0, 8).join("\n")}${labels.length > 8 ? "\n…" : ""}\n\n` +
+    `在庫データとPinkoi商品情報を削除します。\n` +
+    `旧Tシャツ在庫アプリの実在庫は削除しません。\n` +
+    `Pinkoiサイト本体の商品も削除されません。`
+  );
+  if (!ok) return;
+
+  if (APP_CONFIG.demoMode) {
+    const selectedSet = new Set(selected.map(x => x.key));
+
+    for (const { bodyId, designId } of selected) {
+      const body = byId(state.bodies, bodyId);
+      const design = byId(state.designs, designId);
+      if (body && design) {
+        const disabled = new Set(design.disabledBodyNames || []);
+        disabled.add(body.internalName);
+        design.disabledBodyNames = [...disabled];
+      }
+    }
+
+    state.inventory = state.inventory.filter(v =>
+      !selectedSet.has(inventoryProductKey(v.bodyId, v.designId))
+    );
+    state.pinkoiProducts = state.pinkoiProducts.filter(p =>
+      !selectedSet.has(inventoryProductKey(p.bodyId, p.designId))
+    );
+
+    selectedInventoryProductKeys.clear();
+    localSave();
+    render();
+    showToast(`${selected.length}商品を削除しました`);
+    return;
+  }
+
+  // First block legacy auto-recreation for the selected Design × Body groups.
+  for (const { bodyId, designId } of selected) {
+    const body = byId(state.bodies, bodyId);
+    const design = byId(state.designs, designId);
+    if (!body || !design) continue;
+
+    const disabled = new Set(
+      Array.isArray(design.disabledBodyNames) ? design.disabledBodyNames : []
+    );
+    disabled.add(body.internalName);
+    const next = [...disabled];
+
+    await firebaseApi.setDoc(
+      firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.designs, design.id),
+      {
+        disabledBodyNames: next,
+        updatedAt: new Date().toISOString()
+      },
+      { merge: true }
+    );
+
+    design.disabledBodyNames = next;
+  }
+
+  const selectedSet = new Set(selected.map(x => x.key));
+
+  const inventoryToDelete = state.inventory.filter(v =>
+    selectedSet.has(inventoryProductKey(v.bodyId, v.designId))
+  );
+
+  const productsToDelete = state.pinkoiProducts.filter(p =>
+    selectedSet.has(inventoryProductKey(p.bodyId, p.designId))
+  );
+
+  const deletions = [
+    ...inventoryToDelete.map(v =>
+      firebaseApi.deleteDoc(
+        firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.inventory, v.id)
+      )
+    ),
+    ...productsToDelete.map(p =>
+      firebaseApi.deleteDoc(
+        firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.pinkoiProducts, p.id)
+      )
+    )
+  ];
+
+  if (deletions.length) await Promise.all(deletions);
+
+  selectedInventoryProductKeys.clear();
+  updateInventorySelectionCount();
+  showToast(`${selected.length}商品を削除しました`);
+}
+
 function renderInventory() {
   const variants = filteredInventory();
   const sizes = ["S", "M", "L", "XL", "XXL"];
@@ -1111,90 +1352,122 @@ function renderInventory() {
 
   if (!variants.length) {
     $("#inventoryRows").innerHTML =
-      `<tr><td colspan="7" class="muted">在庫データがありません</td></tr>`;
+      `<tr><td colspan="8" class="muted">在庫データがありません</td></tr>`;
+    updateInventorySelectionCount();
     return;
   }
 
-  const groups = new Map();
+  // First group by Body × Design so the checkbox represents one product.
+  const productGroups = new Map();
 
   for (const v of variants) {
-    const key = `${v.bodyId}|${v.designId}|${v.colorId}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
+    const productKey = inventoryProductKey(v.bodyId, v.designId);
+
+    if (!productGroups.has(productKey)) {
+      productGroups.set(productKey, {
+        key: productKey,
         bodyId: v.bodyId,
         designId: v.designId,
-        colorId: v.colorId,
-        variants: new Map()
+        colors: new Map()
       });
     }
-    groups.get(key).variants.set(String(v.size || "").toUpperCase(), v);
+
+    const product = productGroups.get(productKey);
+
+    if (!product.colors.has(v.colorId)) {
+      product.colors.set(v.colorId, new Map());
+    }
+
+    product.colors.get(v.colorId).set(String(v.size || "").toUpperCase(), v);
   }
 
-  const rows = [...groups.values()].sort((a, b) => {
+  const products = [...productGroups.values()].sort((a, b) => {
     const bodyA = byId(state.bodies, a.bodyId)?.internalName || "";
     const bodyB = byId(state.bodies, b.bodyId)?.internalName || "";
     const designA = byId(state.designs, a.designId)?.internalName || "";
     const designB = byId(state.designs, b.designId)?.internalName || "";
-    const colorA = byId(state.colors, a.colorId)?.internalName || "";
-    const colorB = byId(state.colors, b.colorId)?.internalName || "";
 
-    return (
-      bodyA.localeCompare(bodyB) ||
-      designA.localeCompare(designB) ||
-      colorA.localeCompare(colorB)
-    );
+    return bodyA.localeCompare(bodyB) || designA.localeCompare(designB);
   });
 
   let currentBodyId = null;
   const html = [];
 
-  for (const row of rows) {
-    const body = byId(state.bodies, row.bodyId);
-    const design = byId(state.designs, row.designId);
-    const color = byId(state.colors, row.colorId);
+  for (const product of products) {
+    const body = byId(state.bodies, product.bodyId);
+    const design = byId(state.designs, product.designId);
 
-    if (!bodyFilter && row.bodyId !== currentBodyId) {
-      currentBodyId = row.bodyId;
+    if (!bodyFilter && product.bodyId !== currentBodyId) {
+      currentBodyId = product.bodyId;
       html.push(`
         <tr class="body-section-row">
-          <td colspan="7">${esc(body?.internalName || "Body")}</td>
+          <td colspan="8">${esc(body?.internalName || "Body")}</td>
         </tr>
       `);
     }
 
-    const sizeCells = sizes.map(size => {
-      const v = row.variants.get(size);
+    const colorRows = [...product.colors.entries()].sort(([colorA], [colorB]) => {
+      const a = byId(state.colors, colorA)?.internalName || "";
+      const b = byId(state.colors, colorB)?.internalName || "";
+      return a.localeCompare(b);
+    });
 
-      if (!v) {
-        return `<td class="size-cell empty-size">—</td>`;
-      }
+    colorRows.forEach(([colorId, variantsBySize], index) => {
+      const color = byId(state.colors, colorId);
 
-      const stock = Number(v.stock || 0);
-      const pinkoi = Number(v.pinkoiStock || 0);
-      const different = stock !== pinkoi;
+      const sizeCells = sizes.map(size => {
+        const v = variantsBySize.get(size);
 
-      return `
-        <td class="size-cell">
-          <button class="size-stock-button ${different ? "needs-sync" : ""}"
-                  data-edit-variant="${esc(v.id)}"
-                  title="${esc(v.sku || "")}">
-            <span class="size-stock-number">${stock}</span>
-            <span class="size-pinkoi-number">P ${pinkoi}</span>
-          </button>
-        </td>
-      `;
-    }).join("");
+        if (!v) {
+          return `<td class="size-cell empty-size">—</td>`;
+        }
 
-    html.push(`
-      <tr>
-        <td class="design-cell">${esc(design?.internalName || "?")}</td>
-        <td class="color-cell">${esc(color?.internalName || "?")}</td>
-        ${sizeCells}
-      </tr>
-    `);
+        const stock = Number(v.stock || 0);
+        const pinkoi = Number(v.pinkoiStock || 0);
+        const different = stock !== pinkoi;
+
+        return `
+          <td class="size-cell">
+            <button class="size-stock-button ${different ? "needs-sync" : ""}"
+                    data-edit-variant="${esc(v.id)}"
+                    title="${esc(v.sku || "")}">
+              <span class="size-stock-number">${stock}</span>
+              <span class="size-pinkoi-number">P ${pinkoi}</span>
+            </button>
+          </td>
+        `;
+      }).join("");
+
+      const firstCells = index === 0
+        ? `
+          <td class="inventory-select-cell" rowspan="${colorRows.length}">
+            <input
+              class="inventory-design-checkbox"
+              type="checkbox"
+              data-select-inventory-product
+              data-key="${esc(product.key)}"
+              ${selectedInventoryProductKeys.has(product.key) ? "checked" : ""}
+              aria-label="${esc(design?.internalName || "Design")}を選択"
+            >
+          </td>
+          <td class="design-cell" rowspan="${colorRows.length}">
+            ${esc(design?.internalName || "?")}
+          </td>
+        `
+        : "";
+
+      html.push(`
+        <tr class="${selectedInventoryProductKeys.has(product.key) ? "inventory-row-selected" : ""}">
+          ${firstCells}
+          <td class="color-cell">${esc(color?.internalName || "?")}</td>
+          ${sizeCells}
+        </tr>
+      `);
+    });
   }
 
   $("#inventoryRows").innerHTML = html.join("");
+  updateInventorySelectionCount();
 }
 
 
@@ -1627,6 +1900,8 @@ async function submitProductInventory(e) {
   const body = byId(state.bodies, bodyId);
   const design = byId(state.designs, designId);
   let saved = 0;
+
+  await clearDesignBodyDeletionBlock(bodyId, designId);
 
   for (const cell of $$("#productInventoryRows .product-stock-cell")) {
     const colorId = cell.dataset.colorId;
@@ -2468,6 +2743,8 @@ async function submitBulkVariant(e) {
     return;
   }
 
+  await clearDesignBodyDeletionBlock(bodyId, designId);
+
   const rows = $$("#bulkSizeRows tr");
   let saved = 0;
 
@@ -2524,10 +2801,15 @@ function openVariant(id=null) {
 
 async function submitVariant(e) {
   e.preventDefault();
+  const bodyId = $("#variantBody").value;
+  const designId = $("#variantDesign").value;
+
+  await clearDesignBodyDeletionBlock(bodyId, designId);
+
   const item = {
     id: $("#variantId").value || slug(),
-    bodyId: $("#variantBody").value,
-    designId: $("#variantDesign").value,
+    bodyId,
+    designId,
     colorId: $("#variantColor").value,
     size: normalizePinkoiTshirtSize($("#variantSize").value),
     sku: $("#variantSku").value.trim(),
@@ -2708,6 +2990,12 @@ function bindEvents() {
   $("#bodyFilter").addEventListener("change", renderInventory);
   $("#sortSelect").addEventListener("change", renderInventory);
 
+  $("#selectVisibleInventoryBtn")?.addEventListener("click", selectVisibleInventoryProducts);
+  $("#clearInventorySelectionBtn")?.addEventListener("click", clearInventorySelection);
+  $("#inventoryReflectPinkoiBtn")?.addEventListener("click", () => bulkSetSelectedPinkoiStock("reflect"));
+  $("#inventoryZeroPinkoiBtn")?.addEventListener("click", () => bulkSetSelectedPinkoiStock("zero"));
+  $("#inventoryDeleteProductsBtn")?.addEventListener("click", deleteSelectedInventoryProducts);
+
   $("#taskSearchInput")?.addEventListener("input", renderStockTasks);
   $("#taskBodyFilter")?.addEventListener("change", renderStockTasks);
   $("#taskTypeFilter")?.addEventListener("change", renderStockTasks);
@@ -2771,6 +3059,19 @@ function bindEvents() {
   $("#loadDefaultsBtn")?.addEventListener("click", loadIcelollyDefaults);
 
   document.addEventListener("change", e => {
+    const inventoryCheckbox = e.target.closest("[data-select-inventory-product]");
+    if (inventoryCheckbox) {
+      const key = inventoryCheckbox.dataset.key;
+      if (!key) return;
+
+      if (inventoryCheckbox.checked) selectedInventoryProductKeys.add(key);
+      else selectedInventoryProductKeys.delete(key);
+
+      updateInventorySelectionCount();
+      renderInventory();
+      return;
+    }
+
     const checkbox = e.target.closest("[data-select-pinkoi-product]");
     if (!checkbox) return;
 
