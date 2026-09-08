@@ -578,26 +578,104 @@ function tshirtMasterSourceName(masterItem) {
   ).trim();
 }
 
+function canonicalTshirtBodyName(source, bodyId = "") {
+  const candidates = [
+    source?.managementName,
+    source?.salesName,
+    source?.id,
+    bodyId
+  ].filter(Boolean).map(normalizedTshirtKey);
+
+  for (const [canonicalName, aliases] of Object.entries(TSHIRT_MASTER_BODY_ALIASES)) {
+    const normalizedAliases = [
+      canonicalName,
+      ...aliases
+    ].map(normalizedTshirtKey);
+
+    if (candidates.some(name => normalizedAliases.includes(name))) {
+      return canonicalName;
+    }
+  }
+
+  // Additional tolerant matching for common master labels/ids.
+  for (const value of candidates) {
+    if (value.includes("organic") || value.includes("オーガニック")) return "Organic";
+    if (value.includes("vintage") || value.includes("ヴィンテージ") || value.includes("ビンテージ")) return "Vintage";
+    if (
+      value === "mij" ||
+      value.includes("made in japan") ||
+      value.includes("日本製")
+    ) return "MIJ";
+  }
+
+  return "";
+}
+
 function pinkoiBodyForTshirtBodyId(bodyId) {
   const source = tshirtMasterBodies()?.[bodyId];
   if (!source) return null;
 
+  const canonicalName = canonicalTshirtBodyName(source, bodyId);
   const sourceNames = [
     source.managementName,
     source.salesName,
-    bodyId
+    source.id,
+    bodyId,
+    canonicalName
   ].filter(Boolean).map(normalizedTshirtKey);
 
+  // 1. Exact Pinkoi master match by internal name / labels / id / code.
   for (const body of state.bodies) {
     const aliases = [
       body.internalName,
       body.displayName?.ja,
       body.displayName?.en,
       body.displayName?.zhTW,
+      body.id,
+      body.code,
       ...(TSHIRT_MASTER_BODY_ALIASES[body.internalName] || [])
     ].filter(Boolean).map(normalizedTshirtKey);
 
     if (sourceNames.some(name => aliases.includes(name))) return body;
+  }
+
+  // 2. Known canonical Body fallback. This makes the sync independent of
+  // minor display-name differences between the two apps.
+  const canonicalIds = {
+    Organic: ["organic", "org"],
+    Vintage: ["vintage", "vnt"],
+    MIJ: ["mij"]
+  };
+
+  if (canonicalName) {
+    const canonicalKey = normalizedTshirtKey(canonicalName);
+
+    const found = state.bodies.find(body => {
+      const values = [
+        body.internalName,
+        body.id,
+        body.code
+      ].filter(Boolean).map(normalizedTshirtKey);
+
+      return (
+        values.includes(canonicalKey) ||
+        (canonicalIds[canonicalName] || []).some(id => values.includes(normalizedTshirtKey(id)))
+      );
+    });
+
+    if (found) return found;
+
+    // 3. Final fallback to the app's canonical Body seed ids.
+    const seedBody = seed.bodies.find(
+      body => normalizedTshirtKey(body.internalName) === canonicalKey
+    );
+
+    if (seedBody) {
+      const stateBody = state.bodies.find(
+        body => normalizedTshirtKey(body.id) === normalizedTshirtKey(seedBody.id)
+      );
+      if (stateBody) return stateBody;
+    }
   }
 
   return null;
@@ -606,18 +684,34 @@ function pinkoiBodyForTshirtBodyId(bodyId) {
 function tshirtBodyForPinkoiBody(body) {
   if (!body) return null;
 
+  const canonicalName =
+    canonicalTshirtBodyName(
+      {
+        managementName: body.internalName,
+        salesName: body.displayName?.en,
+        id: body.id
+      },
+      body.id
+    ) || body.internalName;
+
   const pinkoiNames = [
     body.internalName,
     body.displayName?.ja,
     body.displayName?.en,
-    ...(TSHIRT_MASTER_BODY_ALIASES[body.internalName] || [])
+    body.id,
+    body.code,
+    canonicalName,
+    ...(TSHIRT_MASTER_BODY_ALIASES[canonicalName] || [])
   ].filter(Boolean).map(normalizedTshirtKey);
 
   return Object.values(tshirtMasterBodies()).find(source => {
+    const sourceCanonical = canonicalTshirtBodyName(source, source.id);
+
     const sourceNames = [
       source.managementName,
       source.salesName,
-      source.id
+      source.id,
+      sourceCanonical
     ].filter(Boolean).map(normalizedTshirtKey);
 
     return sourceNames.some(name => pinkoiNames.includes(name));
@@ -1147,8 +1241,34 @@ function isPinkoiVariantControlledByTshirtMaster(item) {
   return true;
 }
 
+
+function aggregateLegacySyncIssues(issues) {
+  const grouped = new Map();
+
+  for (const issue of issues || []) {
+    const key = `${issue.type}__${issue.label}__${issue.reason}`;
+    const current = grouped.get(key);
+
+    if (current) {
+      current.stock += Math.max(0, Number(issue.stock || 0));
+    } else {
+      grouped.set(key, {
+        ...issue,
+        stock: Math.max(0, Number(issue.stock || 0))
+      });
+    }
+  }
+
+  return [...grouped.values()].sort((a, b) =>
+    String(a.reason).localeCompare(String(b.reason), "ja") ||
+    String(a.label).localeCompare(String(b.label), "ja")
+  );
+}
+
 function legacyStockDiagnostics() {
   const built = tshirtMasterTargetMap();
+
+  const aggregatedIssues = aggregateLegacySyncIssues(built.issues);
 
   const result = {
     sourceTotal: tshirtMasterStockTotal(),
@@ -1160,10 +1280,10 @@ function legacyStockDiagnostics() {
     ),
     unmatchedTotal: 0,
     excludedTotal: built.excludedTotal,
-    issues: built.issues
+    issues: aggregatedIssues
   };
 
-  result.unmatchedTotal = built.issues
+  result.unmatchedTotal = aggregatedIssues
     .filter(issue => issue.type !== "excluded")
     .reduce((sum, issue) => sum + Math.max(0, Number(issue.stock || 0)), 0);
 
