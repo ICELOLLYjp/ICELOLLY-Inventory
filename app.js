@@ -463,6 +463,269 @@ function composePinkoiOther(rawOther, bodyId, ecoChecked) {
   return uniqueLimited(items, 5).join(", ");
 }
 
+
+// Existing T-shirt inventory app compatibility layer.
+// Pinkoi Inventory names are canonical. Legacy names are used only when
+// reading/writing tshirtStock/shared so the old app keeps working unchanged.
+const LEGACY_TSHIRT_DESIGN_MAP = {
+  "Bigwave": "Bigwave",
+  "Share the Pavement": "Share the pavement",
+  "Gulls and Lemons": "Gull",
+  "Sink": "Sink",
+  "Space Odyssey RAY": "Rays",
+  "Cherry": "Cherry",
+  "Squids Night": "Squids",
+  "Whole Ocean Dive Club": "Whole ocean dive club",
+  "See You in Water": "See you in water",
+  "DEEP": "DEEP",
+  "Safe Surf": "Safe Surf",
+  "SALTY": "SALTY"
+};
+
+const LEGACY_TSHIRT_COLOR_MAP = {
+  Organic: {
+    "Natural": "ナチュラル",
+    "Black": "ブラック",
+    "Green": "グリーン",
+    "Light Purple": "パープル",
+    "Pink": "ピンク",
+    "Beige Grey": "ベージュ"
+  },
+  Vintage: {
+    "Vintage Black": "VB",
+    "Vintage Navy": "VN",
+    "Vintage Light Grey": "VG",
+    "Vintage Purple": "VP"
+  }
+};
+
+let legacyStockState = {
+  ready: false,
+  designs: {},
+  syncing: false,
+  lastSyncedAt: null,
+  error: ""
+};
+
+let legacyReconcileTimer = null;
+
+function canonicalMasterByName(list, internalName) {
+  return list.find(item => item.internalName === internalName) || null;
+}
+
+function legacyDesignKeyForCanonical(canonicalName) {
+  const alias = LEGACY_TSHIRT_DESIGN_MAP[canonicalName];
+  if (!alias) return null;
+
+  // If a canonical key already exists in the legacy document, prefer it.
+  // Otherwise use the known legacy alias so the old app stays compatible.
+  if (legacyStockState.designs?.[canonicalName]) return canonicalName;
+  if (legacyStockState.designs?.[alias]) return alias;
+  return alias;
+}
+
+function legacyMappingForInventoryItem(item) {
+  const body = byId(state.bodies, item?.bodyId);
+  const design = byId(state.designs, item?.designId);
+  const color = byId(state.colors, item?.colorId);
+
+  if (!body || !design || !color) return null;
+
+  const legacyDesign = legacyDesignKeyForCanonical(design.internalName);
+  const legacyColor = LEGACY_TSHIRT_COLOR_MAP[body.internalName]?.[color.internalName];
+  const size = normalizePinkoiTshirtSize(item.size);
+
+  if (!legacyDesign || !legacyColor || !PINKOI_TSHIRT_SIZES.includes(size)) {
+    return null;
+  }
+
+  return {
+    bodyName: body.internalName,
+    designName: design.internalName,
+    colorName: color.internalName,
+    legacyDesign,
+    legacyColor,
+    size
+  };
+}
+
+function setLegacySyncStatus(message, stateName = "") {
+  const el = $("#legacySyncStatus");
+  if (!el) return;
+  el.textContent = message;
+  el.dataset.state = stateName;
+}
+
+function scheduleLegacyStockReconcile(delay = 180) {
+  if (APP_CONFIG.demoMode || !state.user) return;
+  clearTimeout(legacyReconcileTimer);
+  legacyReconcileTimer = setTimeout(() => {
+    reconcileLegacyStockToPinkoi().catch(err => {
+      console.error("legacy stock reconcile failed", err);
+      legacyStockState.error = err?.message || String(err);
+      setLegacySyncStatus("Tシャツ在庫同期エラー", "error");
+    });
+  }, delay);
+}
+
+async function reconcileLegacyStockToPinkoi(force = false) {
+  if (APP_CONFIG.demoMode || !state.user || !firebaseApi) return;
+  if (!legacyStockState.ready) return;
+  if (legacyStockState.syncing && !force) return;
+  if (!state.bodies.length || !state.designs.length || !state.colors.length) return;
+
+  legacyStockState.syncing = true;
+  setLegacySyncStatus("Tシャツ在庫を同期中…", "syncing");
+
+  try {
+    const writes = [];
+    let changed = 0;
+
+    for (const [canonicalDesignName] of Object.entries(LEGACY_TSHIRT_DESIGN_MAP)) {
+      const designMaster = canonicalMasterByName(state.designs, canonicalDesignName);
+      if (!designMaster) continue;
+
+      const legacyDesignKey = legacyDesignKeyForCanonical(canonicalDesignName);
+      const legacyDesign = legacyStockState.designs?.[legacyDesignKey];
+      if (!legacyDesign) continue;
+
+      for (const [bodyName, colorMap] of Object.entries(LEGACY_TSHIRT_COLOR_MAP)) {
+        const bodyMaster = canonicalMasterByName(state.bodies, bodyName);
+        if (!bodyMaster) continue;
+
+        for (const [canonicalColorName, legacyColorName] of Object.entries(colorMap)) {
+          const colorMaster = canonicalMasterByName(state.colors, canonicalColorName);
+          if (!colorMaster) continue;
+
+          for (const size of PINKOI_TSHIRT_SIZES) {
+            const legacyStock = Number(legacyDesign.stock?.[legacyColorName]?.[size] ?? 0);
+
+            const existing = state.inventory.find(v =>
+              v.bodyId === bodyMaster.id &&
+              v.designId === designMaster.id &&
+              v.colorId === colorMaster.id &&
+              normalizePinkoiTshirtSize(v.size) === size
+            );
+
+            // Do not create hundreds of empty variants. Existing variants are
+            // still pulled to zero when the legacy stock becomes zero.
+            if (!existing && legacyStock === 0) continue;
+            if (existing && Number(existing.stock || 0) === legacyStock) continue;
+
+            const item = {
+              id: existing?.id || `legacy_${cleanSkuPart(bodyMaster.code || bodyName)}_${cleanSkuPart(designMaster.code || canonicalDesignName)}_${cleanSkuPart(colorMaster.code || canonicalColorName)}_${cleanSkuPart(size)}`,
+              bodyId: bodyMaster.id,
+              designId: designMaster.id,
+              colorId: colorMaster.id,
+              size,
+              sku: existing?.sku || `${generatedSkuPrefix(bodyMaster.id, designMaster.id, colorMaster.id)}_${cleanSkuPart(size)}`,
+              stock: legacyStock,
+              pinkoiStock: Number(existing?.pinkoiStock || 0),
+              priceJpy: Number(existing?.priceJpy || 0),
+              pinkoiProductId: existing?.pinkoiProductId || "",
+              updatedAt: new Date().toISOString(),
+              stockSource: "tshirtStock/shared"
+            };
+
+            writes.push(
+              firebaseApi.setDoc(
+                firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.inventory, item.id),
+                item,
+                { merge: true }
+              )
+            );
+            changed++;
+          }
+        }
+      }
+    }
+
+    if (writes.length) await Promise.all(writes);
+
+    legacyStockState.lastSyncedAt = new Date();
+    legacyStockState.error = "";
+    const time = legacyStockState.lastSyncedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    setLegacySyncStatus(`Tシャツ在庫 同期済み ${time}${changed ? ` / ${changed}件更新` : ""}`, "ok");
+  } finally {
+    legacyStockState.syncing = false;
+  }
+}
+
+async function ensureLegacyStockLoaded() {
+  if (legacyStockState.ready) return true;
+  if (!firebaseApi || !state.user) return false;
+
+  const ref = firebaseApi.doc(firebaseApi.db, "tshirtStock", "shared");
+  const snap = await firebaseApi.getDoc(ref);
+  if (!snap.exists()) return false;
+
+  legacyStockState.designs = snap.data()?.designs || {};
+  legacyStockState.ready = true;
+  return true;
+}
+
+async function syncInventoryItemToLegacy(item) {
+  if (APP_CONFIG.demoMode || !firebaseApi || !state.user) return;
+
+  const mapping = legacyMappingForInventoryItem(item);
+  if (!mapping) return; // MIJ and unmapped designs stay Pinkoi-only.
+
+  try {
+    const loaded = await ensureLegacyStockLoaded();
+    if (!loaded) return;
+
+    // Do not create a malformed design object in the old app. Sync only
+    // designs that are already present in tshirtStock/shared.
+    if (!legacyStockState.designs?.[mapping.legacyDesign]) return;
+
+    const ref = firebaseApi.doc(firebaseApi.db, "tshirtStock", "shared");
+    const field = new firebaseApi.FieldPath(
+      "designs",
+      mapping.legacyDesign,
+      "stock",
+      mapping.legacyColor,
+      mapping.size
+    );
+
+    await firebaseApi.updateDoc(
+      ref,
+      field,
+      Math.max(0, Number(item.stock || 0)),
+      "updatedAt",
+      firebaseApi.serverTimestamp()
+    );
+  } catch (err) {
+    console.error("legacy stock push failed", err);
+    legacyStockState.error = err?.message || String(err);
+    setLegacySyncStatus("Tシャツ在庫 書き込みエラー", "error");
+  }
+}
+
+function startLegacyStockRealtime() {
+  const ref = firebaseApi.doc(firebaseApi.db, "tshirtStock", "shared");
+
+  const unsub = firebaseApi.onSnapshot(ref, snap => {
+    if (!snap.exists()) {
+      legacyStockState.ready = false;
+      legacyStockState.designs = {};
+      setLegacySyncStatus("旧Tシャツ在庫データがありません", "error");
+      return;
+    }
+
+    legacyStockState.designs = snap.data()?.designs || {};
+    legacyStockState.ready = true;
+    legacyStockState.error = "";
+    scheduleLegacyStockReconcile(80);
+  }, err => {
+    console.error("legacy tshirt stock snapshot failed", err);
+    legacyStockState.ready = false;
+    legacyStockState.error = err?.message || String(err);
+    setLegacySyncStatus("Tシャツ在庫 同期エラー", "error");
+  });
+
+  unsubscribers.push(unsub);
+}
+
 const BODY_COLOR_RULES = {
   Organic: ["Natural", "Black", "Green", "Light Purple", "Pink", "Beige Grey"],
   Vintage: ["Vintage Black", "Vintage Navy", "Vintage Light Grey", "Vintage Purple"],
@@ -569,6 +832,10 @@ async function initFirebase() {
       state.colors = [];
       state.inventory = [];
       state.pinkoiProducts = [];
+      legacyStockState.ready = false;
+      legacyStockState.designs = {};
+      legacyStockState.error = "";
+      setLegacySyncStatus("ログインするとTシャツ在庫と同期します");
       render();
     }
   });
@@ -586,13 +853,19 @@ function startRealtime() {
     const unsub = firebaseApi.onSnapshot(q, snap => {
       state[name] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
+
+      if (["bodies", "designs", "colors", "inventory"].includes(name)) {
+        scheduleLegacyStockReconcile();
+      }
     }, err => {
       console.error(err);
       showToast("Firestoreの読み込みに失敗しました");
     });
     unsubscribers.push(unsub);
   };
+
   ["bodies","designs","colors","inventory","pinkoiProducts"].forEach(watch);
+  startLegacyStockRealtime();
 }
 
 async function saveCollectionItem(collectionName, item) {
@@ -606,6 +879,10 @@ async function saveCollectionItem(collectionName, item) {
     return;
   }
   await firebaseApi.setDoc(firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS[collectionName], item.id), item, { merge: true });
+
+  if (collectionName === "inventory") {
+    await syncInventoryItemToLegacy(item);
+  }
 }
 
 async function deleteCollectionItem(collectionName, id) {
@@ -2439,6 +2716,16 @@ function bindEvents() {
     renderVariantColorOptions();
   });
   $("#addVariantBtn").addEventListener("click", openBulkVariantDialog);
+  $("#legacySyncNowBtn")?.addEventListener("click", async () => {
+    const btn = $("#legacySyncNowBtn");
+    if (btn) btn.disabled = true;
+    try {
+      await reconcileLegacyStockToPinkoi(true);
+      showToast("Tシャツ在庫を同期しました");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
   $("#variantForm").addEventListener("submit", submitVariant);
   $("#bulkVariantForm").addEventListener("submit", submitBulkVariant);
   $("#pinkoiProductForm").addEventListener("submit", submitPinkoiProduct);
