@@ -30,6 +30,17 @@ const seed = {
 
 const PINKOI_TSHIRT_SIZES = ["S", "M", "L", "XL", "XXL"];
 
+const DEFAULT_PINKOI_PRICES_JPY = {
+  Vintage: 6380,
+  Organic: 6820,
+  MIJ: 8800
+};
+
+function defaultPinkoiPriceJpy(bodyId) {
+  const body = byId(state.bodies, bodyId);
+  return Number(DEFAULT_PINKOI_PRICES_JPY[body?.internalName] || 0);
+}
+
 function normalizePinkoiTshirtSize(value) {
   const raw = String(value || "")
     .trim()
@@ -919,13 +930,17 @@ function variantPriceJpy(v) {
   return Number(v?.priceJpy ?? 0);
 }
 
-function productPriceJpy(p, fallbackVariant = null) {
+function productPriceJpy(p, fallbackVariant = null, bodyId = null) {
   // Pinkoi v2.1 template price is JPY.
   // Do not fall back to old TWD values.
-  return Number(
-    p?.priceJpy ??
-    variantPriceJpy(fallbackVariant) ??
-    0
+  const productPrice = Number(p?.priceJpy ?? 0);
+  if (productPrice > 0) return productPrice;
+
+  const variantPrice = variantPriceJpy(fallbackVariant);
+  if (variantPrice > 0) return variantPrice;
+
+  return defaultPinkoiPriceJpy(
+    bodyId || p?.bodyId || fallbackVariant?.bodyId || ""
   );
 }
 
@@ -2023,6 +2038,91 @@ function normalizedPinkoiTshirtCategory(value) {
   return category;
 }
 
+
+function buildDefaultPinkoiProduct(bodyId, designId) {
+  const id = pinkoiProductKey(bodyId, designId);
+
+  return {
+    id,
+    bodyId,
+    designId,
+
+    titleJa: generatedTitle(bodyId, designId, "ja"),
+    titleEn: generatedTitle(bodyId, designId, "en"),
+    titleZh: generatedTitle(bodyId, designId, "zhTW"),
+    customTitle: generatedTitle(bodyId, designId, "en"),
+
+    pinkoiProductId: "",
+    priceJpy: defaultPinkoiPriceJpy(bodyId),
+
+    category: "ファッション > Tシャツ - 1",
+    productionMethod: "工場生産",
+    origin: "JP 日本",
+    orderType: "general",
+    shipDays: 3,
+    material: "コットン",
+    target: "ユニセックス",
+    shippingPlan: "Tシャツ発送",
+    other: composePinkoiOther("", bodyId, isOrganicBodyId(bodyId)),
+    imageUrls: "",
+    tags: effectivePinkoiTags({ bodyId, designId }),
+
+    highlightJa: pinkoiCopyValue(null, "highlightJa", bodyId),
+    descriptionJa: pinkoiCopyValue(null, "descriptionJa", bodyId),
+    highlightEn: pinkoiCopyValue(null, "highlightEn", bodyId),
+    descriptionEn: pinkoiCopyValue(null, "descriptionEn", bodyId),
+    highlightZh: pinkoiCopyValue(null, "highlightZh", bodyId),
+    descriptionZh: pinkoiCopyValue(null, "descriptionZh", bodyId),
+
+    status: "draft",
+    note: "",
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function ensurePinkoiProduct(bodyId, designId) {
+  const existing = getPinkoiProduct(bodyId, designId);
+  if (existing) {
+    // Fill a missing/zero price with the Body default without overwriting
+    // an explicitly saved non-zero price.
+    if (Number(existing.priceJpy || 0) <= 0) {
+      const nextPrice = defaultPinkoiPriceJpy(bodyId);
+
+      if (APP_CONFIG.demoMode) {
+        existing.priceJpy = nextPrice;
+        localSave();
+      } else {
+        await firebaseApi.setDoc(
+          firebaseApi.doc(
+            firebaseApi.db,
+            FIRESTORE_COLLECTIONS.pinkoiProducts,
+            existing.id
+          ),
+          {
+            priceJpy: nextPrice,
+            updatedAt: new Date().toISOString()
+          },
+          { merge: true }
+        );
+      }
+
+      existing.priceJpy = nextPrice;
+    }
+
+    return existing;
+  }
+
+  const item = buildDefaultPinkoiProduct(bodyId, designId);
+  await saveCollectionItem("pinkoiProducts", item);
+
+  // Keep local state immediately usable while Firestore snapshot catches up.
+  if (!state.pinkoiProducts.some(p => p.id === item.id)) {
+    state.pinkoiProducts.push(item);
+  }
+
+  return item;
+}
+
 function openPinkoiProduct(bodyId, designId) {
   const body = byId(state.bodies, bodyId);
   const design = byId(state.designs, designId);
@@ -2049,7 +2149,7 @@ function openPinkoiProduct(bodyId, designId) {
     product?.titleZh || generatedTitle(bodyId, designId, "zhTW");
 
   $("#pinkoiProductId").value = product?.pinkoiProductId || "";
-  $("#pinkoiProductPrice").value = productPriceJpy(product) || 6380;
+  $("#pinkoiProductPrice").value = productPriceJpy(product, null, bodyId);
 
   $("#pinkoiCategory").value =
     normalizedPinkoiTshirtCategory(product?.category);
@@ -2182,19 +2282,22 @@ function updatePinkoiSelectionCount() {
   if (el) el.textContent = selectedPinkoiProductKeys.size;
 }
 
-function selectAllDraftProducts() {
+async function selectAllDraftProducts() {
   selectedPinkoiProductKeys.clear();
 
-  state.pinkoiProducts.forEach(product => {
-    if ((product.status || "draft") !== "draft") return;
+  const keys = new Map();
 
-    const hasVariants = state.inventory.some(v =>
-      v.bodyId === product.bodyId &&
-      v.designId === product.designId
-    );
-
-    if (hasVariants) selectedPinkoiProductKeys.add(product.id);
+  state.inventory.forEach(v => {
+    const key = pinkoiProductKey(v.bodyId, v.designId);
+    if (!keys.has(key)) keys.set(key, { bodyId: v.bodyId, designId: v.designId });
   });
+
+  for (const { bodyId, designId } of keys.values()) {
+    const product = await ensurePinkoiProduct(bodyId, designId);
+    if ((product.status || "draft") === "draft") {
+      selectedPinkoiProductKeys.add(product.id);
+    }
+  }
 
   updatePinkoiSelectionCount();
   renderPinkoi();
@@ -2266,7 +2369,7 @@ function renderPinkoi() {
 
     const title = effectivePinkoiTitle(group.bodyId, group.designId);
     const status = product?.status || "draft";
-    const price = productPriceJpy(product, group.variants[0]) || 0;
+    const price = productPriceJpy(product, group.variants[0], group.bodyId) || 0;
     const productId = product?.pinkoiProductId || "未設定";
 
     const colorGroups = new Map();
@@ -2304,9 +2407,8 @@ function renderPinkoi() {
               data-select-pinkoi-product
               data-key="${esc(product?.id || pinkoiProductKey(group.bodyId, group.designId))}"
               ${selectedPinkoiProductKeys.has(product?.id || pinkoiProductKey(group.bodyId, group.designId)) ? "checked" : ""}
-              ${!product ? "disabled" : ""}
             >
-            <span>選択</span>
+            <span>${product ? "選択" : "選択"}</span>
           </label>
 
           <div class="pinkoi-card-main">
@@ -2321,6 +2423,7 @@ function renderPinkoi() {
 
         <div class="pinkoi-meta">
           <span>ID: ${esc(productId)}</span>
+          ${!product ? `<span class="pinkoi-unregistered">商品情報 未登録</span>` : ""}
           <span>JPY ${Number(price || 0).toLocaleString()}</span>
           <span>${product?.orderType === "madeToOrder" ? "受注制作" : "一般注文"} ${Number(product?.shipDays ?? (product?.orderType === "madeToOrder" ? 14 : 3))}日</span>
         </div>
@@ -2470,9 +2573,9 @@ function validatePinkoiExport(groups) {
         problems.push(`${label}: Pinkoi在庫は0〜50000で入力してください。`);
       }
     });
-    if (!product.priceJpy || Number(product.priceJpy) < 1) {
-      problems.push(`${label}: 価格 JPY を商品情報で保存してください。旧TWD価格は使用しません。`);
-    } else if (Number(product.priceJpy) > 999999) {
+    if (!price || Number(price) < 1) {
+      problems.push(`${label}: 価格 JPY を設定してください。`);
+    } else if (Number(price) > 999999) {
       problems.push(`${label}: 価格 JPY は999999円以下で入力してください。`);
     }
   });
@@ -2786,7 +2889,7 @@ function openBulkVariantDialog() {
   $("#bulkBody").value = state.bodies[0]?.id || "";
   renderBulkDesignOptions();
   renderBulkColorOptions();
-  $("#bulkPrice").value = 6380;
+  $("#bulkPrice").value = defaultPinkoiPriceJpy($("#bulkBody").value);
   $("#bulkPinkoiId").value = "";
   $("#bulkSkuPrefix").value = "";
   renderBulkSizeRows();
@@ -2858,7 +2961,7 @@ function openVariant(id=null) {
   $("#variantSku").value = v?.sku || "";
   $("#variantStock").value = v?.stock ?? 0;
   $("#variantPinkoiStock").value = v?.pinkoiStock ?? 0;
-  $("#variantPrice").value = v?.priceJpy ?? v?.priceTwd ?? 6380;
+  $("#variantPrice").value = Number(v?.priceJpy || 0) > 0 ? Number(v.priceJpy) : defaultPinkoiPriceJpy($("#variantBody").value);
   $("#variantPinkoiId").value = v?.pinkoiProductId || "";
   $("#variantDialog").showModal();
 }
@@ -3067,6 +3170,10 @@ function bindEvents() {
   $("#variantBody").addEventListener("change", () => {
     renderVariantDesignOptions();
     renderVariantColorOptions();
+
+    if (!$("#variantId").value) {
+      $("#variantPrice").value = defaultPinkoiPriceJpy($("#variantBody").value);
+    }
   });
   $("#addVariantBtn").addEventListener("click", openBulkVariantDialog);
   $("#legacySyncNowBtn")?.addEventListener("click", async () => {
@@ -3123,7 +3230,7 @@ function bindEvents() {
   $("#logoutBtn").addEventListener("click", logout);
   $("#loadDefaultsBtn")?.addEventListener("click", loadIcelollyDefaults);
 
-  document.addEventListener("change", e => {
+  document.addEventListener("change", async e => {
     const inventoryCheckbox = e.target.closest("[data-select-inventory-product]");
     if (inventoryCheckbox) {
       const key = inventoryCheckbox.dataset.key;
@@ -3143,11 +3250,34 @@ function bindEvents() {
     const key = checkbox.dataset.key;
     if (!key) return;
 
-    if (checkbox.checked) selectedPinkoiProductKeys.add(key);
-    else selectedPinkoiProductKeys.delete(key);
+    if (checkbox.checked) {
+      let product = state.pinkoiProducts.find(p => p.id === key);
+
+      if (!product) {
+        const [bodyId, designId] = key.split("__");
+        checkbox.disabled = true;
+
+        try {
+          product = await ensurePinkoiProduct(bodyId, designId);
+        } catch (err) {
+          console.error("default Pinkoi product creation failed", err);
+          checkbox.checked = false;
+          alert("商品情報の初期設定を作成できませんでした。");
+          return;
+        } finally {
+          checkbox.disabled = false;
+        }
+      } else if (Number(product.priceJpy || 0) <= 0) {
+        await ensurePinkoiProduct(product.bodyId, product.designId);
+      }
+
+      selectedPinkoiProductKeys.add(key);
+    } else {
+      selectedPinkoiProductKeys.delete(key);
+    }
 
     updatePinkoiSelectionCount();
-    checkbox.closest(".pinkoi-product-card")?.classList.toggle("selected", checkbox.checked);
+    renderPinkoi();
   });
 
   document.addEventListener("click", async e => {
