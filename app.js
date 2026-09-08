@@ -27,6 +27,48 @@ const seed = {
 };
 
 
+const DEFAULT_BODY_SIZE_CHARTS = {
+  Organic: {
+    model: "TRUSS OGB-910",
+    source: "https://www.truss-wear.jp/items/index.php?page=info&code=OGB-910",
+    sizeChart: {
+      S:   { length: 65, width: 48, shoulder: 43, sleeve: 18 },
+      M:   { length: 68, width: 52, shoulder: 46, sleeve: 19 },
+      L:   { length: 71, width: 56, shoulder: 49, sleeve: 20 },
+      XL:  { length: 74, width: 60, shoulder: 52, sleeve: 21 },
+      XXL: { length: 77, width: 64, shoulder: 55, sleeve: 22 }
+    }
+  },
+
+  Vintage: {
+    model: "D-FACTORY DF1101D",
+    source: "https://sloth-ethical.com/product.php?id=43",
+    sizeChart: {
+      S:   { length: 65, width: 49, shoulder: 42, sleeve: 19 },
+      M:   { length: 69, width: 52, shoulder: 46, sleeve: 20 },
+      L:   { length: 73, width: 55, shoulder: 50, sleeve: 22 },
+      XL:  { length: 77, width: 58, shoulder: 54, sleeve: 24 },
+      XXL: { length: 81, width: 61, shoulder: 57, sleeve: 25 }
+    }
+  },
+
+  MIJ: {
+    model: "TRUSS JPC-001",
+    source: "https://www.truss-wear.jp/items/index.php?page=info&code=JPC-001",
+    sizeChart: {
+      S:   { length: 68, width: 47, shoulder: 45, sleeve: 23 },
+      M:   { length: 71, width: 51, shoulder: 48, sleeve: 24 },
+      L:   { length: 74, width: 56, shoulder: 51, sleeve: 25 },
+      XL:  { length: 77, width: 61, shoulder: 54, sleeve: 26 },
+      XXL: { length: 80, width: 66, shoulder: 57, sleeve: 27 }
+    }
+  }
+};
+
+function defaultSizeChartForBody(body) {
+  return DEFAULT_BODY_SIZE_CHARTS[body?.internalName] || null;
+}
+
 const ICELOLLY_DEFAULTS = {
   bodies: [
     { internalName: "Organic", code: "ORG", displayName: { ja: "オーガニックコットンTシャツ", en: "Organic Cotton T Shirt", zhTW: "有機棉 T恤" }, bodyModel: "TRUSS OGB-910", sizeChartSource: "https://www.truss-wear.jp/items/index.php?page=info&code=OGB-910", sizeChart: DEFAULT_BODY_SIZE_CHARTS.Organic.sizeChart },
@@ -135,47 +177,7 @@ The T shirt body, color, and material may be different depending on the design. 
 };
 
 
-const DEFAULT_BODY_SIZE_CHARTS = {
-  Organic: {
-    model: "TRUSS OGB-910",
-    source: "https://www.truss-wear.jp/items/index.php?page=info&code=OGB-910",
-    sizeChart: {
-      S:   { length: 65, width: 48, shoulder: 43, sleeve: 18 },
-      M:   { length: 68, width: 52, shoulder: 46, sleeve: 19 },
-      L:   { length: 71, width: 56, shoulder: 49, sleeve: 20 },
-      XL:  { length: 74, width: 60, shoulder: 52, sleeve: 21 },
-      XXL: { length: 77, width: 64, shoulder: 55, sleeve: 22 }
-    }
-  },
 
-  Vintage: {
-    model: "D-FACTORY DF1101D",
-    source: "https://sloth-ethical.com/product.php?id=43",
-    sizeChart: {
-      S:   { length: 65, width: 49, shoulder: 42, sleeve: 19 },
-      M:   { length: 69, width: 52, shoulder: 46, sleeve: 20 },
-      L:   { length: 73, width: 55, shoulder: 50, sleeve: 22 },
-      XL:  { length: 77, width: 58, shoulder: 54, sleeve: 24 },
-      XXL: { length: 81, width: 61, shoulder: 57, sleeve: 25 }
-    }
-  },
-
-  MIJ: {
-    model: "TRUSS JPC-001",
-    source: "https://www.truss-wear.jp/items/index.php?page=info&code=JPC-001",
-    sizeChart: {
-      S:   { length: 68, width: 47, shoulder: 45, sleeve: 23 },
-      M:   { length: 71, width: 51, shoulder: 48, sleeve: 24 },
-      L:   { length: 74, width: 56, shoulder: 51, sleeve: 25 },
-      XL:  { length: 77, width: 61, shoulder: 54, sleeve: 26 },
-      XXL: { length: 80, width: 66, shoulder: 57, sleeve: 27 }
-    }
-  }
-};
-
-function defaultSizeChartForBody(body) {
-  return DEFAULT_BODY_SIZE_CHARTS[body?.internalName] || null;
-}
 
 
 const BODY_PINKOI_COPY = {
