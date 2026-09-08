@@ -611,6 +611,64 @@ function canonicalTshirtBodyName(source, bodyId = "") {
   return "";
 }
 
+
+function canonicalPinkoiBodySeed(canonicalName) {
+  return seed.bodies.find(
+    body => normalizedTshirtKey(body.internalName) === normalizedTshirtKey(canonicalName)
+  ) || ICELOLLY_DEFAULTS.bodies.find(
+    body => normalizedTshirtKey(body.internalName) === normalizedTshirtKey(canonicalName)
+  ) || null;
+}
+
+async function ensureCanonicalPinkoiBodiesForTshirtMaster() {
+  const required = new Set();
+
+  for (const row of tshirtMasterInventoryEntries()) {
+    if (row.qty <= 0) continue;
+    const canonicalName = canonicalTshirtBodyName(row.body, row.resolvedBodyId);
+    if (canonicalName) required.add(canonicalName);
+  }
+
+  let added = 0;
+
+  for (const canonicalName of required) {
+    const already = state.bodies.find(body =>
+      normalizedTshirtKey(body.internalName) === normalizedTshirtKey(canonicalName) ||
+      normalizedTshirtKey(body.code) === normalizedTshirtKey(
+        canonicalName === "Organic" ? "ORG" :
+        canonicalName === "Vintage" ? "VNT" :
+        canonicalName === "MIJ" ? "MIJ" : ""
+      )
+    );
+
+    if (already) continue;
+
+    const source = canonicalPinkoiBodySeed(canonicalName);
+    if (!source) continue;
+
+    const item = {
+      ...source,
+      id: source.id || stableMasterId("body", canonicalName),
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveCollectionItem("bodies", item);
+
+    if (!state.bodies.some(body => body.id === item.id)) {
+      state.bodies.push(item);
+    }
+
+    added++;
+  }
+
+  if (added) {
+    renderMasters();
+    fillSelects();
+  }
+
+  return added;
+}
+
 function pinkoiBodyForTshirtBodyId(bodyId) {
   const source = tshirtMasterBodies()?.[bodyId];
   if (!source) return null;
@@ -672,9 +730,15 @@ function pinkoiBodyForTshirtBodyId(bodyId) {
 
     if (seedBody) {
       const stateBody = state.bodies.find(
-        body => normalizedTshirtKey(body.id) === normalizedTshirtKey(seedBody.id)
+        body =>
+          normalizedTshirtKey(body.id) === normalizedTshirtKey(seedBody.id) ||
+          normalizedTshirtKey(body.internalName) === normalizedTshirtKey(seedBody.internalName)
       );
       if (stateBody) return stateBody;
+
+      // The realtime snapshot may not have delivered a just-created Body yet.
+      // Return the canonical seed so mapping can continue immediately.
+      return seedBody;
     }
   }
 
@@ -1095,7 +1159,10 @@ function mappedTshirtRows() {
     if (!pinkoiBody) {
       issues.push({
         type: "body",
-        label: row.body?.managementName || row.resolvedBodyId || "Body不明",
+        label: [
+          row.body?.managementName || "Body不明",
+          row.resolvedBodyId ? `(${row.resolvedBodyId})` : ""
+        ].filter(Boolean).join(" "),
         stock: row.qty,
         reason: "Pinkoi Body未対応"
       });
@@ -1381,6 +1448,8 @@ async function reconcileLegacyStockToPinkoi(force = false) {
   setLegacySyncStatus("tshirtStock/master を同期中…", "syncing");
 
   try {
+    await ensureCanonicalPinkoiBodiesForTshirtMaster();
+
     const { target } = tshirtMasterTargetMap();
     const existingByKey = new Map(
       state.inventory.map(v => [pinkoiVariantMasterKey(v), v])
@@ -1487,7 +1556,16 @@ function startLegacyStockRealtime() {
 
     renderMissingLegacyDesigns();
     renderLegacyStockDiagnostics();
-    scheduleLegacyStockReconcile(80);
+
+    ensureCanonicalPinkoiBodiesForTshirtMaster()
+      .then(() => {
+        renderLegacyStockDiagnostics();
+        scheduleLegacyStockReconcile(40);
+      })
+      .catch(err => {
+        console.error("Pinkoi Body auto setup failed", err);
+        scheduleLegacyStockReconcile(80);
+      });
   }, err => {
     console.error("tshirtStock/master snapshot failed", err);
     legacyStockState.ready = false;
