@@ -2918,6 +2918,10 @@ function validatePinkoiExport(groups) {
       problems.push(`${label}: 日本語の商品説明を15文字以上入力してください。`);
     }
 
+    if (!new Set(variants.map(v => v.colorId).filter(Boolean)).size) {
+      problems.push(`${label}: Colorが1つ以上必要です。`);
+    }
+
     variants.forEach(v => {
       const color = byId(state.colors, v.colorId);
       const size = normalizePinkoiTshirtSize(v.size);
@@ -2948,7 +2952,56 @@ function validatePinkoiExport(groups) {
 function pinkoiVariantRows(product, variants) {
   const sizeOrder = new Map(PINKOI_TSHIRT_SIZES.map((s, i) => [s, i]));
 
-  return [...variants].sort((a, b) => {
+  // Pinkoi creates a size specification only when that row exists in the
+  // import file. For every Color already used by this product, always export
+  // S / M / L / XL / XXL even when stock is zero.
+  const colorIds = [...new Set(
+    variants
+      .map(v => v.colorId)
+      .filter(Boolean)
+  )];
+
+  const expanded = [];
+
+  for (const colorId of colorIds) {
+    const bySize = new Map();
+
+    variants
+      .filter(v => v.colorId === colorId)
+      .forEach(v => {
+        const normalizedSize = normalizePinkoiTshirtSize(v.size);
+        if (normalizedSize) bySize.set(normalizedSize, v);
+      });
+
+    for (const size of PINKOI_TSHIRT_SIZES) {
+      const existing = bySize.get(size);
+
+      if (existing) {
+        expanded.push({
+          ...existing,
+          size,
+          sku:
+            String(existing.sku || "").trim() ||
+            `${generatedSkuPrefix(product.bodyId, product.designId, colorId)}_${cleanSkuPart(size)}`,
+          pinkoiStock: Math.max(0, Number(existing.pinkoiStock ?? 0))
+        });
+      } else {
+        expanded.push({
+          id: `export_${product.bodyId}_${product.designId}_${colorId}_${size}`,
+          bodyId: product.bodyId,
+          designId: product.designId,
+          colorId,
+          size,
+          sku: `${generatedSkuPrefix(product.bodyId, product.designId, colorId)}_${cleanSkuPart(size)}`,
+          stock: 0,
+          pinkoiStock: 0,
+          exportSynthetic: true
+        });
+      }
+    }
+  }
+
+  return expanded.sort((a, b) => {
     const ca = byId(state.colors, a.colorId)?.internalName || "";
     const cb = byId(state.colors, b.colorId)?.internalName || "";
     const sa = sizeOrder.get(normalizePinkoiTshirtSize(a.size)) ?? 99;
@@ -3067,8 +3120,14 @@ async function exportPinkoiXlsx() {
         excelSetCell(ws, row, 14, "サイズ -- 規定");
         excelSetCell(ws, row, 15, size);
 
-        excelSetCell(ws, row, 16, v.sku || "");
-        excelSetCell(ws, row, 17, stock);
+        const exportSku =
+          String(v.sku || "").trim() ||
+          `${generatedSkuPrefix(product.bodyId, product.designId, v.colorId)}_${cleanSkuPart(size)}`;
+
+        // Keep SKU and stock=0 even when this size has no physical stock.
+        // Blank SKU / missing row causes Pinkoi not to create that size.
+        excelSetCell(ws, row, 16, exportSku);
+        excelSetCell(ws, row, 17, Number.isFinite(stock) ? stock : 0);
         excelSetCell(ws, row, 18, price);
 
         if (first) {
