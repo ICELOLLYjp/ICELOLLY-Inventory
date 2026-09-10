@@ -721,6 +721,29 @@ textarea {
       }
     }
 
+
+    .master-design-link-setup {
+      margin-top: 14px;
+    }
+
+    .master-design-link-status {
+      display: block;
+      margin-top: 8px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    #masterDesignLinkField select {
+      width: 100%;
+      margin-top: 6px;
+    }
+
+    #masterDesignLinkField small {
+      display: block;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
   </style>
 
   <style>
@@ -1143,6 +1166,27 @@ textarea {
               <button class="button small" data-add-master="design">追加</button>
             </div>
             <div id="designList" class="master-list"></div>
+
+            <div class="legacy-design-import master-design-link-setup">
+              <div class="legacy-design-import-head">
+                <strong>Tシャツ在庫Design 明示リンク</strong>
+                <small>tshirtStock/master の実IDを確認して保存します</small>
+              </div>
+              <p class="muted">
+                Gulls and Lemons → Gull /
+                Space Odyssey RAY → Rays /
+                Squids Night → Squids
+              </p>
+              <button id="linkKnownMasterDesignsBtn"
+                      class="button secondary small"
+                      type="button">
+                既存3Designを確認してリンク
+              </button>
+              <div id="knownMasterDesignLinkStatus"
+                   class="muted master-design-link-status">
+                実行するまでFirestoreは変更しません。
+              </div>
+            </div>
 
             <div class="legacy-design-import">
               <div class="legacy-design-import-head">
@@ -1615,6 +1659,19 @@ textarea {
         <label>繁體中文<input id="masterZh"></label>
       </fieldset>
 
+      <fieldset id="masterDesignLinkField" class="hidden">
+        <legend>Tシャツ在庫Design</legend>
+        <label>
+          tshirtStock/master
+          <select id="masterDesignId">
+            <option value="">未設定（名称照合を使用）</option>
+          </select>
+        </label>
+        <small id="masterDesignLinkStatus" class="muted">
+          masterDesignIdは任意です。
+        </small>
+      </fieldset>
+
       <fieldset id="designBodiesField" class="hidden">
         <legend>使用するBody</legend>
         <label><input type="checkbox" class="design-body-check" value="Organic"> Organic</label>
@@ -1638,6 +1695,6 @@ textarea {
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js?v=20260910-1605"></script>
+  <script type="module" src="./app.js?v=20260910-1715"></script>
 </body>
 </html>

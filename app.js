@@ -1131,6 +1131,12 @@ let selectedInventoryColorKeys = new Set();
 
 let salesManagerDiagnosticResult = null;
 
+let tshirtMasterDesignCache = {
+  loaded: false,
+  items: [],
+  error: ""
+};
+
 
 // Firestore上ではPinkoi専用コレクションを使います。
 // 既存のTシャツ在庫と同じFirebaseプロジェクトを使ってもデータは混ざりません。
@@ -1222,6 +1228,11 @@ async function initFirebase() {
       legacyStockState.error = "";
       setLegacySyncStatus("ログインするとTシャツ在庫と同期します");
       salesManagerDiagnosticResult = null;
+      tshirtMasterDesignCache = {
+        loaded: false,
+        items: [],
+        error: ""
+      };
       render();
     }
   });
@@ -1325,6 +1336,7 @@ const SALES_DIAGNOSTIC_REASON_LABELS = {
   size: "Size未対応",
   ambiguous_body: "Body候補が複数あります",
   ambiguous_design: "Design候補が複数あります",
+  design_link_invalid: "Tシャツ在庫Designリンクが無効です",
   ambiguous_color: "Color候補が複数あります",
   ambiguous_size: "Size候補が複数あります"
 };
@@ -1469,8 +1481,46 @@ function resolveDiagnosticMaster({
     status: "unmatched",
     id: "",
     candidateIds: [],
-    method: ""
+    method: "none"
   };
+}
+
+function resolveDiagnosticDesign({
+  pinkoiId = "",
+  pinkoiItem = null,
+  index
+}) {
+  const explicitMasterDesignId =
+    diagText(pinkoiItem?.masterDesignId);
+
+  if (explicitMasterDesignId) {
+    if (index.masterMap[explicitMasterDesignId]) {
+      return {
+        status: "matched",
+        id: explicitMasterDesignId,
+        candidateIds: [explicitMasterDesignId],
+        method: "masterDesignId",
+        configuredMasterDesignId:
+          explicitMasterDesignId
+      };
+    }
+
+    return {
+      status: "unmatched",
+      id: "",
+      candidateIds: [],
+      method: "none",
+      reason: "design_link_invalid",
+      configuredMasterDesignId:
+        explicitMasterDesignId
+    };
+  }
+
+  return resolveDiagnosticMaster({
+    pinkoiId,
+    pinkoiItem,
+    index
+  });
 }
 
 function resolveDiagnosticSize(sizeValue, sizeIndex) {
@@ -1491,7 +1541,10 @@ function resolveDiagnosticSize(sizeValue, sizeIndex) {
 
 function diagnosticReasonForComponent(component, resolution) {
   if (resolution.status === "matched") return "";
-  if (resolution.status === "ambiguous") return `ambiguous_${component}`;
+  if (resolution.reason) return resolution.reason;
+  if (resolution.status === "ambiguous") {
+    return `ambiguous_${component}`;
+  }
   return component;
 }
 
@@ -1669,7 +1722,7 @@ function buildSalesManagerDiagnostic(sources) {
       index: bodyIndex
     });
 
-    const designMatch = resolveDiagnosticMaster({
+    const designMatch = resolveDiagnosticDesign({
       pinkoiId: row.designId,
       pinkoiItem: pinkoiDesign,
       index: designIndex
@@ -1780,7 +1833,8 @@ function buildSalesManagerDiagnostic(sources) {
           id: pinkoiDesign.id,
           internalName: diagText(pinkoiDesign.internalName),
           code: diagText(pinkoiDesign.code),
-          displayName: diagnosticDisplayNameField(pinkoiDesign)
+          displayName: diagnosticDisplayNameField(pinkoiDesign),
+          masterDesignId: diagText(pinkoiDesign.masterDesignId)
         } : null,
         color: pinkoiColor ? {
           id: pinkoiColor.id,
@@ -1844,17 +1898,23 @@ function buildSalesManagerDiagnostic(sources) {
     });
   });
 
+  const diagnosticReasonComponent = reason => {
+    if (reason === "design_link_invalid") return "design";
+    return reason.replace(/^ambiguous_/, "");
+  };
+
   const componentReasonCount = component =>
     items.filter(item =>
-      item.masterMatch.reasons.some(reason =>
-        reason === component || reason === `ambiguous_${component}`
+      item.masterMatch.reasons.some(
+        reason =>
+          diagnosticReasonComponent(reason) === component
       )
     ).length;
 
   const multipleReasonCount = items.filter(item => {
     const components = new Set(
-      item.masterMatch.reasons.map(reason =>
-        reason.replace(/^ambiguous_/, "")
+      item.masterMatch.reasons.map(
+        diagnosticReasonComponent
       )
     );
     return components.size > 1;
@@ -2103,6 +2163,8 @@ function renderSalesDiagnosticItems() {
             <div><span>Design internalName</span><code>${esc(item.pinkoiMasters.design?.internalName || "—")}</code></div>
             <div><span>Design code</span><code>${esc(item.pinkoiMasters.design?.code || "—")}</code></div>
             <div><span>Design displayName</span><code>${esc(item.pinkoiMasters.design?.displayName || "—")}</code></div>
+            <div><span>masterDesignId</span><code>${esc(item.pinkoiMasters.design?.masterDesignId || "—")}</code></div>
+            <div><span>Design match method</span><code>${esc(item.masterMatch.components.design?.method || "none")}</code></div>
             <div><span>Pinkoi colorId</span><code>${esc(item.pinkoi.colorId)}</code></div>
             <div><span>Color internalName</span><code>${esc(item.pinkoiMasters.color?.internalName || "—")}</code></div>
             <div><span>Color code</span><code>${esc(item.pinkoiMasters.color?.code || "—")}</code></div>
@@ -3170,6 +3232,305 @@ async function submitSizeChart(e) {
   showToast("サイズ表を保存しました");
 }
 
+
+function masterDesignRecordEntries(source) {
+  if (Array.isArray(source)) {
+    return source
+      .filter(Boolean)
+      .map((item, index) => [diagText(item?.id) || String(index), item]);
+  }
+  return Object.entries(source || {});
+}
+
+function tshirtMasterDesignDisplayName(item) {
+  return (
+    diagText(item?.managementName) ||
+    diagText(item?.legacyKey) ||
+    diagText(item?.salesName) ||
+    diagText(item?.internalName) ||
+    diagnosticDisplayNames(item?.displayName)[0] ||
+    diagText(item?.id)
+  );
+}
+
+function tshirtMasterDesignOptionLabel(item) {
+  const parts = [];
+  const main = tshirtMasterDesignDisplayName(item);
+  if (main) parts.push(main);
+
+  const legacy = diagText(item?.legacyKey);
+  const sales = diagText(item?.salesName);
+
+  if (
+    legacy &&
+    normalizeDiagnosticValue(legacy) !== normalizeDiagnosticValue(main)
+  ) {
+    parts.push(`旧: ${legacy}`);
+  }
+
+  if (
+    sales &&
+    normalizeDiagnosticValue(sales) !== normalizeDiagnosticValue(main) &&
+    normalizeDiagnosticValue(sales) !== normalizeDiagnosticValue(legacy)
+  ) {
+    parts.push(`販売: ${sales}`);
+  }
+
+  parts.push(`ID: ${diagText(item?.id)}`);
+  return parts.join(" / ");
+}
+
+async function loadTshirtMasterDesigns(force = false) {
+  if (!force && tshirtMasterDesignCache.loaded) {
+    return tshirtMasterDesignCache.items;
+  }
+
+  if (APP_CONFIG.demoMode || !firebaseApi || !state.user) {
+    tshirtMasterDesignCache = {
+      loaded: false,
+      items: [],
+      error: "Google Login後に読み込めます。"
+    };
+    return [];
+  }
+
+  const getter = firebaseApi.getDocFromServer || firebaseApi.getDoc;
+  const snapshot = await getter(
+    firebaseApi.doc(firebaseApi.db, "tshirtStock", "master")
+  );
+
+  if (!snapshot.exists()) {
+    tshirtMasterDesignCache = {
+      loaded: false,
+      items: [],
+      error: "tshirtStock/master が見つかりません。"
+    };
+    return [];
+  }
+
+  const source = snapshot.data()?.masters?.designs || {};
+
+  const items = masterDesignRecordEntries(source)
+    .map(([key, raw]) => ({
+      ...raw,
+      id: diagText(key) || diagText(raw?.id)
+    }))
+    .filter(item => item.id)
+    .sort((a, b) =>
+      tshirtMasterDesignDisplayName(a)
+        .localeCompare(tshirtMasterDesignDisplayName(b), "ja")
+    );
+
+  tshirtMasterDesignCache = {
+    loaded: true,
+    items,
+    error: ""
+  };
+
+  return items;
+}
+
+function masterDesignByCachedId(id) {
+  const target = diagText(id);
+  if (!target) return null;
+  return (
+    tshirtMasterDesignCache.items.find(item => item.id === target) ||
+    null
+  );
+}
+
+function renderDesignMasterLinkSmall(design) {
+  const linkedId = diagText(design?.masterDesignId);
+
+  if (!linkedId) {
+    return `<small>Tシャツ在庫Design: 未設定</small>`;
+  }
+
+  const linked = masterDesignByCachedId(linkedId);
+  const label = linked
+    ? tshirtMasterDesignDisplayName(linked)
+    : linkedId;
+
+  return `
+    <small>
+      Tシャツ在庫Design:
+      ${esc(label)}
+      ${linked ? "" : "（ID保存済み）"}
+    </small>
+  `;
+}
+
+function populateMasterDesignSelect(selectedId = "") {
+  const select = $("#masterDesignId");
+  const status = $("#masterDesignLinkStatus");
+  if (!select || !status) return;
+
+  const selected = diagText(selectedId);
+  const items = tshirtMasterDesignCache.items;
+
+  const options = [
+    `<option value="">未設定（名称照合を使用）</option>`,
+    ...items.map(item => `
+      <option value="${esc(item.id)}">
+        ${esc(tshirtMasterDesignOptionLabel(item))}
+      </option>
+    `)
+  ];
+
+  if (selected && !items.some(item => item.id === selected)) {
+    options.push(`
+      <option value="${esc(selected)}">
+        現在の設定: ${esc(selected)}（masterに存在しません）
+      </option>
+    `);
+  }
+
+  select.innerHTML = options.join("");
+  select.value = selected;
+
+  if (tshirtMasterDesignCache.error) {
+    status.textContent = tshirtMasterDesignCache.error;
+  } else if (selected && !items.some(item => item.id === selected)) {
+    status.textContent =
+      "保存済みmasterDesignIdが現在のtshirtStock/masterに存在しません。診断では design_link_invalid になります。";
+  } else if (selected) {
+    status.textContent =
+      "このリンクはPinkoi販売名を変更しても維持されます。";
+  } else {
+    status.textContent =
+      "未設定の場合はSales Manager連携診断でID・名称・code等による照合を使用します。";
+  }
+}
+
+function exactMasterDesignCandidates(items, expectedName) {
+  const expected = normalizeDiagnosticValue(expectedName);
+
+  return items.filter(item => {
+    const values = [
+      item?.managementName,
+      item?.legacyKey,
+      item?.salesName,
+      item?.internalName,
+      ...diagnosticDisplayNames(item?.displayName)
+    ]
+      .map(normalizeDiagnosticValue)
+      .filter(Boolean);
+
+    return values.includes(expected);
+  });
+}
+
+async function linkKnownExistingDesigns() {
+  const button = $("#linkKnownMasterDesignsBtn");
+  const status = $("#knownMasterDesignLinkStatus");
+
+  if (APP_CONFIG.demoMode || !firebaseApi || !state.user) {
+    status.textContent = "Google Login後に実行してください。";
+    return;
+  }
+
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "master確認中…";
+  status.textContent =
+    "tshirtStock/master.masters.designs の実データを確認しています。";
+
+  try {
+    const masterDesigns = await loadTshirtMasterDesigns(true);
+
+    const mappings = [
+      { pinkoiName: "Gulls and Lemons", masterName: "Gull" },
+      { pinkoiName: "Space Odyssey RAY", masterName: "Rays" },
+      { pinkoiName: "Squids Night", masterName: "Squids" }
+    ];
+
+    const plans = [];
+
+    for (const mapping of mappings) {
+      const pinkoiCandidates = state.designs.filter(
+        design =>
+          normalizeDiagnosticValue(design.internalName) ===
+          normalizeDiagnosticValue(mapping.pinkoiName)
+      );
+
+      if (pinkoiCandidates.length !== 1) {
+        throw new Error(
+          `${mapping.pinkoiName}: Pinkoi Designが${pinkoiCandidates.length}件です。1件に確定できません。`
+        );
+      }
+
+      const masterCandidates = exactMasterDesignCandidates(
+        masterDesigns,
+        mapping.masterName
+      );
+
+      if (masterCandidates.length !== 1) {
+        throw new Error(
+          `${mapping.masterName}: tshirtStock/master側の候補が${masterCandidates.length}件です。自動保存しません。`
+        );
+      }
+
+      plans.push({
+        mapping,
+        pinkoi: pinkoiCandidates[0],
+        master: masterCandidates[0]
+      });
+    }
+
+    const preview = plans
+      .map(plan =>
+        `${plan.mapping.pinkoiName} → ${tshirtMasterDesignDisplayName(plan.master)}\nID: ${plan.master.id}`
+      )
+      .join("\n\n");
+
+    if (!confirm(
+      `tshirtStock/masterの実データから次の3件を確認しました。\n\n${preview}\n\npinkoi_designs.masterDesignIdだけを更新しますか？`
+    )) {
+      status.textContent = "変更をキャンセルしました。";
+      return;
+    }
+
+    const batch = firebaseApi.writeBatch(firebaseApi.db);
+    const updatedAt = new Date().toISOString();
+
+    plans.forEach(plan => {
+      batch.set(
+        firebaseApi.doc(
+          firebaseApi.db,
+          FIRESTORE_COLLECTIONS.designs,
+          plan.pinkoi.id
+        ),
+        {
+          masterDesignId: plan.master.id,
+          updatedAt
+        },
+        { merge: true }
+      );
+    });
+
+    await batch.commit();
+
+    status.innerHTML = plans
+      .map(plan =>
+        `${esc(plan.mapping.pinkoiName)} → <code>${esc(plan.master.id)}</code>`
+      )
+      .join("<br>");
+
+    showToast(
+      "既存3DesignをTシャツ在庫Designへリンクしました"
+    );
+
+    await runSalesManagerDiagnostic();
+  } catch (error) {
+    console.error("known master design link failed", error);
+    status.textContent =
+      `リンク設定エラー: ${error?.message || String(error)}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
 function renderMasters() {
   const renderList = (type, list, target) => {
     $(target).innerHTML = list.map(x => `
@@ -3179,6 +3540,9 @@ function renderMasters() {
           <small>${esc(displayName(x,"en"))}</small>
           ${type === "design" && x.legacyName
             ? `<small>旧在庫: ${esc(x.legacyName)}</small>`
+            : ""}
+          ${type === "design"
+            ? renderDesignMasterLinkSmall(x)
             : ""}
           ${type === "design" && Array.isArray(x.allowedBodyNames) && x.allowedBodyNames.length
             ? `<small>${esc(x.allowedBodyNames.join(" / "))}</small>`
@@ -4373,7 +4737,7 @@ async function submitVariant(e) {
   showToast("保存しました");
 }
 
-function openMaster(type, id=null) {
+async function openMaster(type, id=null) {
   const collectionName = type === "body" ? "bodies" : type === "design" ? "designs" : "colors";
   const item = id ? state[collectionName].find(x => x.id === id) : null;
   $("#masterType").value = type;
@@ -4388,7 +4752,27 @@ function openMaster(type, id=null) {
   const designChecks = $$(".design-body-check");
   designBodiesField.classList.toggle("hidden", type !== "design");
 
+  const masterDesignLinkField = $("#masterDesignLinkField");
+  masterDesignLinkField.classList.toggle("hidden", type !== "design");
+
   if (type === "design") {
+    $("#masterDesignId").disabled = true;
+    $("#masterDesignLinkStatus").textContent =
+      "tshirtStock/master のDesignを読み込んでいます…";
+
+    try {
+      await loadTshirtMasterDesigns(true);
+    } catch (error) {
+      tshirtMasterDesignCache = {
+        loaded: false,
+        items: [],
+        error: error?.message || String(error)
+      };
+    }
+
+    populateMasterDesignSelect(item?.masterDesignId || "");
+    $("#masterDesignId").disabled = false;
+
     const selected = Array.isArray(item?.allowedBodyNames) && item.allowedBodyNames.length
       ? new Set(item.allowedBodyNames)
       : new Set(["Organic", "Vintage", "MIJ"]);
@@ -4438,14 +4822,26 @@ async function submitMaster(e) {
     updatedAt: new Date().toISOString()
   };
 
+  let clearMasterDesignId = false;
+
   if (type === "design") {
     item.allowedBodyNames = $$(".design-body-check")
       .filter(ch => ch.checked)
       .map(ch => ch.value);
 
     const existingDesign = state.designs.find(d => d.id === item.id);
+
     if (existingDesign?.legacyName) {
       item.legacyName = existingDesign.legacyName;
+    }
+
+    const selectedMasterDesignId =
+      $("#masterDesignId").value.trim();
+
+    if (selectedMasterDesignId) {
+      item.masterDesignId = selectedMasterDesignId;
+    } else if (existingDesign?.masterDesignId) {
+      clearMasterDesignId = true;
     }
   }
 
@@ -4455,6 +4851,27 @@ async function submitMaster(e) {
       .map(ch => ch.value);
   }
   await saveCollectionItem(collectionName, item);
+
+  if (
+    type === "design" &&
+    clearMasterDesignId &&
+    !APP_CONFIG.demoMode &&
+    firebaseApi &&
+    state.user
+  ) {
+    await firebaseApi.updateDoc(
+      firebaseApi.doc(
+        firebaseApi.db,
+        FIRESTORE_COLLECTIONS.designs,
+        item.id
+      ),
+      {
+        masterDesignId: firebaseApi.deleteField(),
+        updatedAt: new Date().toISOString()
+      }
+    );
+  }
+
   $("#masterDialog").close();
   showToast("保存しました");
 }
@@ -4619,6 +5036,7 @@ function bindEvents() {
 
   $("#salesDiagnosticRunBtn")?.addEventListener("click", runSalesManagerDiagnostic);
   $("#salesDiagnosticExportBtn")?.addEventListener("click", exportSalesManagerDiagnosticJson);
+  $("#linkKnownMasterDesignsBtn")?.addEventListener("click", linkKnownExistingDesigns);
   $("#salesDiagnosticFilter")?.addEventListener("change", renderSalesDiagnosticItems);
   $("#salesDiagnosticSearch")?.addEventListener("input", renderSalesDiagnosticItems);
 
