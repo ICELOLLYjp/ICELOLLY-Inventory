@@ -493,6 +493,234 @@ textarea {
   margin-top: 10px;
 }
 
+
+    /* Sales Manager linkage diagnostics */
+    .sales-diagnostic-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .sales-diagnostic-safe {
+      margin: 12px 0 16px;
+      padding: 10px 12px;
+      border: 1px solid #d7e6db;
+      border-radius: 10px;
+      background: #f7fbf8;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .sales-diagnostic-summary,
+    .sales-diagnostic-reasons {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .sales-diagnostic-card {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 12px;
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .sales-diagnostic-card span {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.35;
+    }
+
+    .sales-diagnostic-card strong {
+      font-size: 21px;
+      line-height: 1.1;
+    }
+
+    .sales-diagnostic-reason-summary {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .sales-diagnostic-reason-title {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .sales-diagnostic-details {
+      margin-top: 18px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+
+    .sales-diagnostic-details > summary {
+      cursor: pointer;
+      font-weight: 800;
+      padding: 8px 0;
+    }
+
+    .sales-diagnostic-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(170px, 220px);
+      gap: 8px;
+      margin: 10px 0 12px;
+    }
+
+    .sales-diagnostic-toolbar input,
+    .sales-diagnostic-toolbar select {
+      width: 100%;
+    }
+
+    .sales-diagnostic-items {
+      display: grid;
+      gap: 10px;
+    }
+
+    .sales-diagnostic-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--card);
+    }
+
+    .sales-diagnostic-item-head {
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .sales-diagnostic-status {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+
+    .sales-diagnostic-status.ok {
+      background: #f2f8f4;
+    }
+
+    .sales-diagnostic-status.warn {
+      background: #fff8e7;
+    }
+
+    .sales-diagnostic-status.error {
+      background: #fff1f1;
+    }
+
+    .sales-diagnostic-row {
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-top: 1px solid #f0f0f0;
+      font-size: 12px;
+    }
+
+    .sales-diagnostic-row span {
+      color: var(--text-secondary);
+    }
+
+    .sales-diagnostic-row strong {
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
+    .sales-diagnostic-warning {
+      margin-top: 8px;
+      padding: 7px 9px;
+      border-radius: 8px;
+      background: #fff8e7;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .sales-diagnostic-flags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .sales-diagnostic-flags span {
+      font-size: 11px;
+      padding: 4px 7px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fafafa;
+    }
+
+    .sales-diagnostic-item-details {
+      margin-top: 9px;
+      font-size: 12px;
+    }
+
+    .sales-diagnostic-item-details > summary {
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .sales-diagnostic-meta {
+      display: grid;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .sales-diagnostic-meta > div {
+      display: grid;
+      grid-template-columns: minmax(110px, 0.7fr) minmax(0, 1.3fr);
+      gap: 8px;
+      align-items: start;
+    }
+
+    .sales-diagnostic-meta span {
+      color: var(--text-secondary);
+    }
+
+    .sales-diagnostic-meta code {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      font-size: 11px;
+    }
+
+    .sales-diagnostic-empty {
+      padding: 18px 12px;
+      text-align: center;
+      color: var(--text-secondary);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+    }
+
+    @media (max-width: 700px) {
+      .sales-diagnostic-summary,
+      .sales-diagnostic-reasons {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .sales-diagnostic-toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .sales-diagnostic-actions .button {
+        flex: 1 1 150px;
+      }
+
+      .sales-diagnostic-meta > div {
+        grid-template-columns: 1fr;
+        gap: 2px;
+      }
+    }
+
   </style>
 
   <style>
@@ -723,6 +951,7 @@ textarea {
       <button class="tab" data-tab="sizeChart">Size Chart</button>
       <button class="tab" data-tab="masters">Masters</button>
       <button class="tab" data-tab="pinkoi">Pinkoi</button>
+      <button class="tab" data-tab="salesDiagnostic">Sales Manager</button>
     </nav>
 
     <main>
@@ -739,7 +968,7 @@ textarea {
             <strong>Tシャツ実在庫同期</strong>
             <div id="legacySyncStatus" class="muted">ログインするとTシャツ在庫と同期します</div>
             <div id="legacySyncDiagnostics" class="legacy-sync-diagnostics"></div>
-            <div class="muted">Organic / Vintage / MIJ を tshirtStock/master の inventory_v2 から同期します。実在庫の正はTシャツ在庫管理アプリです。</div>
+            <div class="muted">Organic / Vintage は旧Tシャツ在庫アプリと双方向同期。MIJはPinkoi Inventoryで管理します。</div>
           </div>
           <button id="legacySyncNowBtn" class="button secondary small" type="button">今すぐ同期</button>
         </div>
@@ -917,11 +1146,11 @@ textarea {
 
             <div class="legacy-design-import">
               <div class="legacy-design-import-head">
-                <strong>Tシャツmasterから追加</strong>
+                <strong>旧Tシャツ在庫から追加</strong>
                 <small>Pinkoi未登録のDesignだけ表示します</small>
               </div>
               <div id="legacyMissingDesigns" class="legacy-design-import-list">
-                <div class="muted">ログインするとTシャツmasterと比較します。</div>
+                <div class="muted">ログインすると旧Tシャツ在庫と比較します。</div>
               </div>
             </div>
           </div>
@@ -967,6 +1196,74 @@ textarea {
 
         <div id="pinkoiCards" class="pinkoi-grid"></div>
       </section>
+
+      <section id="salesDiagnosticTab" class="panel tabpanel hidden">
+        <div class="section-title">
+          <div>
+            <h2>Sales Manager連携診断</h2>
+            <p class="muted">
+              Pinkoi InventoryのSKU・日本価格・商品マスターを
+              tshirtStock/master と照合します。
+            </p>
+          </div>
+          <div class="sales-diagnostic-actions">
+            <button id="salesDiagnosticRunBtn" class="button" type="button">
+              診断を実行
+            </button>
+            <button id="salesDiagnosticExportBtn" class="button secondary" type="button" disabled>
+              診断JSONを書き出す
+            </button>
+          </div>
+        </div>
+
+        <div class="sales-diagnostic-safe">
+          <strong>読み取り専用</strong><br>
+          診断実行・フィルター・JSON出力では
+          pinkoi_inventory / pinkoi_products / 各Pinkoiマスター /
+          tshirtStock/master を変更しません。
+        </div>
+
+        <div id="salesDiagnosticStatus" class="muted">
+          「診断を実行」を押すと、Firestoreの現在データから毎回診断します。
+        </div>
+
+        <div id="salesDiagnosticSummary"
+             class="sales-diagnostic-summary hidden"></div>
+
+        <div id="salesDiagnosticReasonSummary"
+             class="sales-diagnostic-reason-summary hidden"></div>
+
+        <details id="salesDiagnosticDetails"
+                 class="sales-diagnostic-details hidden">
+          <summary>
+            SKU詳細
+            <span class="muted">
+              表示 <strong id="salesDiagnosticVisibleCount">0</strong> 件
+            </span>
+          </summary>
+
+          <div class="sales-diagnostic-toolbar">
+            <input id="salesDiagnosticSearch"
+                   type="search"
+                   placeholder="SKU / Design / Color / Bodyを検索">
+
+            <select id="salesDiagnosticFilter">
+              <option value="all">すべて</option>
+              <option value="unmatched">未対応のみ</option>
+              <option value="price_missing">価格未設定のみ</option>
+              <option value="price_conflict">価格不一致のみ</option>
+              <option value="sku_missing">SKUなし</option>
+              <option value="sku_duplicate">SKU重複</option>
+              <option value="stock_diff">在庫差異あり</option>
+              <option value="master_zero">master在庫0</option>
+            </select>
+          </div>
+
+          <div id="salesDiagnosticItems"
+               class="sales-diagnostic-items"></div>
+        </details>
+      </section>
+
     </main>
   </div>
 
@@ -1341,6 +1638,6 @@ textarea {
 
   <div id="toast" class="toast hidden"></div>
 
-  <script type="module" src="./app.js?v=20260908-2040"></script>
+  <script type="module" src="./app.js?v=20260910-1605"></script>
 </body>
 </html>

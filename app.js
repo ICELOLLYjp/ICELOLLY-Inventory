@@ -475,62 +475,44 @@ function composePinkoiOther(rawOther, bodyId, ecoChecked) {
 }
 
 
-// T-shirt physical inventory master sync.
-// Source of truth:
-//   Firestore: tshirtStock/master
-//   field: inventory_v2
-// Schema:
-//   inventory_v2[bodyId][designId][colorId][sizeId] = { qty, updatedAt }
-// Body is determined from masters.colors[colorId].bodyId.
-// Pinkoi Inventory receives physical stock one-way from this master.
-// Pinkoi listed stock (pinkoiStock) is never changed by this sync.
-
-const TSHIRT_MASTER_DESIGN_ALIASES = {
-  "Bigwave": ["Bigwave"],
-  "Share the Pavement": ["Share the Pavement", "Share the pavement"],
-  "Gulls and Lemons": ["Gulls and Lemons", "Gull"],
-  "Sink": ["Sink"],
-  "Space Odyssey RAY": ["Space Odyssey RAY", "Rays"],
-  "Cherry": ["Cherry"],
-  "Squids Night": ["Squids Night", "Squids"],
-  "Whole Ocean Dive Club": ["Whole Ocean Dive Club", "Whole ocean dive club"],
-  "See You in Water": ["See You in Water", "See you in water"],
-  "DEEP": ["DEEP"],
-  "Safe Surf": ["Safe Surf"],
-  "SALTY": ["SALTY"]
+// Existing T-shirt inventory app compatibility layer.
+// Pinkoi Inventory names are canonical. Legacy names are used only when
+// reading/writing tshirtStock/shared so the old app keeps working unchanged.
+const LEGACY_TSHIRT_DESIGN_MAP = {
+  "Bigwave": "Bigwave",
+  "Share the Pavement": "Share the pavement",
+  "Gulls and Lemons": "Gull",
+  "Sink": "Sink",
+  "Space Odyssey RAY": "Rays",
+  "Cherry": "Cherry",
+  "Squids Night": "Squids",
+  "Whole Ocean Dive Club": "Whole ocean dive club",
+  "See You in Water": "See you in water",
+  "DEEP": "DEEP",
+  "Safe Surf": "Safe Surf",
+  "SALTY": "SALTY"
 };
 
-const TSHIRT_MASTER_BODY_ALIASES = {
-  Organic: ["Organic", "オーガニック"],
-  Vintage: ["Vintage", "ヴィンテージ", "ビンテージ"],
-  MIJ: ["MIJ", "Made in Japan", "日本製"]
-};
-
-const TSHIRT_MASTER_COLOR_ALIASES = {
+const LEGACY_TSHIRT_COLOR_MAP = {
   Organic: {
-    "Natural": ["Natural", "ナチュラル"],
-    "Black": ["Black", "ブラック"],
-    "Green": ["Green", "グリーン"],
-    "Light Purple": ["Light Purple", "Purple", "パープル"],
-    "Pink": ["Pink", "ピンク"],
-    "Beige Grey": ["Beige Grey", "Beige Gray", "ベージュ", "ベージュグレー"]
+    "Natural": "ナチュラル",
+    "Black": "ブラック",
+    "Green": "グリーン",
+    "Light Purple": "パープル",
+    "Pink": "ピンク",
+    "Beige Grey": "ベージュ"
   },
   Vintage: {
-    "Vintage Black": ["Vintage Black", "VB", "Black"],
-    "Vintage Navy": ["Vintage Navy", "VN", "Navy"],
-    "Vintage Light Grey": ["Vintage Light Grey", "Vintage Light Gray", "VG", "Light Grey", "Light Gray"],
-    "Vintage Purple": ["Vintage Purple", "VP", "Purple"]
-  },
-  MIJ: {
-    "Black JP": ["Black JP", "Black", "ブラック"],
-    "White JP": ["White JP", "White", "ホワイト", "白"],
-    "Grey JP": ["Grey JP", "Gray JP", "Grey", "Gray", "グレー", "灰色"]
+    "Vintage Black": "VB",
+    "Vintage Navy": "VN",
+    "Vintage Light Grey": "VG",
+    "Vintage Purple": "VP"
   }
 };
 
 let legacyStockState = {
   ready: false,
-  master: null,
+  designs: {},
   syncing: false,
   lastSyncedAt: null,
   error: ""
@@ -542,636 +524,54 @@ function canonicalMasterByName(list, internalName) {
   return list.find(item => item.internalName === internalName) || null;
 }
 
-function normalizedTshirtKey(value) {
-  return normalizeName(String(value ?? ""))
-    .replace(/\s+/g, " ")
-    .trim();
+function legacyDesignKeyForCanonical(canonicalName) {
+  const designMaster = state.designs.find(
+    d => normalizeName(d.internalName) === normalizeName(canonicalName)
+  );
+
+  const alias =
+    designMaster?.legacyName?.trim() ||
+    LEGACY_TSHIRT_DESIGN_MAP[canonicalName] ||
+    canonicalName;
+
+  // If a canonical key already exists in the legacy document, prefer it.
+  // Otherwise use the stored/known legacy alias.
+  if (legacyStockState.designs?.[canonicalName]) return canonicalName;
+  if (legacyStockState.designs?.[alias]) return alias;
+
+  const matchedKey = Object.keys(legacyStockState.designs || {}).find(
+    key => normalizeName(key) === normalizeName(alias)
+  );
+
+  return matchedKey || alias || null;
 }
 
-function tshirtMasterData() {
-  return legacyStockState.master || {};
-}
+function canonicalDesignForLegacyName(legacyName) {
+  const legacyNorm = normalizeName(legacyName);
 
-function tshirtMasterBodies() {
-  return tshirtMasterData()?.masters?.bodies || {};
-}
+  const direct = state.designs.find(d =>
+    normalizeName(d.legacyName) === legacyNorm ||
+    normalizeName(d.internalName) === legacyNorm
+  );
+  if (direct) return direct;
 
-function tshirtMasterDesigns() {
-  return tshirtMasterData()?.masters?.designs || {};
-}
-
-function tshirtMasterColors() {
-  return tshirtMasterData()?.masters?.colors || {};
-}
-
-function tshirtMasterSizes() {
-  return tshirtMasterData()?.masters?.sizes || {};
-}
-
-function tshirtMasterSourceName(masterItem) {
-  return String(
-    masterItem?.managementName ||
-    masterItem?.legacyKey ||
-    masterItem?.salesName ||
-    masterItem?.id ||
-    ""
-  ).trim();
-}
-
-function canonicalTshirtBodyName(source, bodyId = "") {
-  const candidates = [
-    source?.managementName,
-    source?.salesName,
-    source?.id,
-    bodyId
-  ].filter(Boolean).map(normalizedTshirtKey);
-
-  for (const [canonicalName, aliases] of Object.entries(TSHIRT_MASTER_BODY_ALIASES)) {
-    const normalizedAliases = [
-      canonicalName,
-      ...aliases
-    ].map(normalizedTshirtKey);
-
-    if (candidates.some(name => normalizedAliases.includes(name))) {
-      return canonicalName;
-    }
-  }
-
-  // Additional tolerant matching for common master labels/ids.
-  for (const value of candidates) {
-    if (value.includes("organic") || value.includes("オーガニック")) return "Organic";
-    if (value.includes("vintage") || value.includes("ヴィンテージ") || value.includes("ビンテージ")) return "Vintage";
-    if (
-      value === "mij" ||
-      value.includes("made in japan") ||
-      value.includes("日本製")
-    ) return "MIJ";
-  }
-
-  return "";
-}
-
-
-function canonicalPinkoiBodySeed(canonicalName) {
-  return seed.bodies.find(
-    body => normalizedTshirtKey(body.internalName) === normalizedTshirtKey(canonicalName)
-  ) || ICELOLLY_DEFAULTS.bodies.find(
-    body => normalizedTshirtKey(body.internalName) === normalizedTshirtKey(canonicalName)
-  ) || null;
-}
-
-async function ensureCanonicalPinkoiBodiesForTshirtMaster() {
-  const required = new Set();
-
-  for (const row of tshirtMasterInventoryEntries()) {
-    if (row.qty <= 0) continue;
-    const canonicalName = canonicalTshirtBodyName(row.body, row.resolvedBodyId);
-    if (canonicalName) required.add(canonicalName);
-  }
-
-  let added = 0;
-
-  for (const canonicalName of required) {
-    const already = state.bodies.find(body =>
-      normalizedTshirtKey(body.internalName) === normalizedTshirtKey(canonicalName) ||
-      normalizedTshirtKey(body.code) === normalizedTshirtKey(
-        canonicalName === "Organic" ? "ORG" :
-        canonicalName === "Vintage" ? "VNT" :
-        canonicalName === "MIJ" ? "MIJ" : ""
-      )
-    );
-
-    if (already) continue;
-
-    const source = canonicalPinkoiBodySeed(canonicalName);
-    if (!source) continue;
-
-    const item = {
-      ...source,
-      id: source.id || stableMasterId("body", canonicalName),
-      updatedAt: new Date().toISOString()
-    };
-
-    await saveCollectionItem("bodies", item);
-
-    if (!state.bodies.some(body => body.id === item.id)) {
-      state.bodies.push(item);
-    }
-
-    added++;
-  }
-
-  if (added) {
-    renderMasters();
-    fillSelects();
-  }
-
-  return added;
-}
-
-
-function resolveTshirtMasterBody(bodyRef) {
-  const bodies = tshirtMasterBodies();
-  const raw = String(bodyRef || "").trim();
-  if (!raw) return null;
-
-  if (bodies[raw]) return bodies[raw];
-
-  const key = normalizedTshirtKey(raw);
-
-  return Object.values(bodies).find(body =>
-    [
-      body?.id,
-      body?.managementName,
-      body?.salesName
-    ].filter(Boolean).some(value => normalizedTshirtKey(value) === key)
-  ) || null;
-}
-
-function pinkoiBodyForTshirtBodyId(bodyId) {
-  const source =
-    resolveTshirtMasterBody(bodyId) ||
-    {
-      id: String(bodyId || ""),
-      managementName: String(bodyId || ""),
-      salesName: ""
-    };
-
-  const canonicalName = canonicalTshirtBodyName(source, bodyId);
-  const sourceNames = [
-    source.managementName,
-    source.salesName,
-    source.id,
-    bodyId,
-    canonicalName
-  ].filter(Boolean).map(normalizedTshirtKey);
-
-  // 1. Exact Pinkoi master match by internal name / labels / id / code.
-  for (const body of state.bodies) {
-    const aliases = [
-      body.internalName,
-      body.displayName?.ja,
-      body.displayName?.en,
-      body.displayName?.zhTW,
-      body.id,
-      body.code,
-      ...(TSHIRT_MASTER_BODY_ALIASES[body.internalName] || [])
-    ].filter(Boolean).map(normalizedTshirtKey);
-
-    if (sourceNames.some(name => aliases.includes(name))) return body;
-  }
-
-  // 2. Known canonical Body fallback. This makes the sync independent of
-  // minor display-name differences between the two apps.
-  const canonicalIds = {
-    Organic: ["organic", "org"],
-    Vintage: ["vintage", "vnt"],
-    MIJ: ["mij"]
-  };
-
-  if (canonicalName) {
-    const canonicalKey = normalizedTshirtKey(canonicalName);
-
-    const found = state.bodies.find(body => {
-      const values = [
-        body.internalName,
-        body.id,
-        body.code
-      ].filter(Boolean).map(normalizedTshirtKey);
-
-      return (
-        values.includes(canonicalKey) ||
-        (canonicalIds[canonicalName] || []).some(id => values.includes(normalizedTshirtKey(id)))
-      );
-    });
-
-    if (found) return found;
-
-    // 3. Final fallback to the app's canonical Body seed ids.
-    const seedBody = seed.bodies.find(
-      body => normalizedTshirtKey(body.internalName) === canonicalKey
-    );
-
-    if (seedBody) {
-      const stateBody = state.bodies.find(
-        body =>
-          normalizedTshirtKey(body.id) === normalizedTshirtKey(seedBody.id) ||
-          normalizedTshirtKey(body.internalName) === normalizedTshirtKey(seedBody.internalName)
-      );
-      if (stateBody) return stateBody;
-
-      // The realtime snapshot may not have delivered a just-created Body yet.
-      // Return the canonical seed so mapping can continue immediately.
-      return seedBody;
+  for (const [canonicalName, alias] of Object.entries(LEGACY_TSHIRT_DESIGN_MAP)) {
+    if (normalizeName(alias) === legacyNorm) {
+      return state.designs.find(
+        d => normalizeName(d.internalName) === normalizeName(canonicalName)
+      ) || null;
     }
   }
 
   return null;
-}
-
-function tshirtBodyForPinkoiBody(body) {
-  if (!body) return null;
-
-  const canonicalName =
-    canonicalTshirtBodyName(
-      {
-        managementName: body.internalName,
-        salesName: body.displayName?.en,
-        id: body.id
-      },
-      body.id
-    ) || body.internalName;
-
-  const pinkoiNames = [
-    body.internalName,
-    body.displayName?.ja,
-    body.displayName?.en,
-    body.id,
-    body.code,
-    canonicalName,
-    ...(TSHIRT_MASTER_BODY_ALIASES[canonicalName] || [])
-  ].filter(Boolean).map(normalizedTshirtKey);
-
-  return Object.values(tshirtMasterBodies()).find(source => {
-    const sourceCanonical = canonicalTshirtBodyName(source, source.id);
-
-    const sourceNames = [
-      source.managementName,
-      source.salesName,
-      source.id,
-      sourceCanonical
-    ].filter(Boolean).map(normalizedTshirtKey);
-
-    return sourceNames.some(name => pinkoiNames.includes(name));
-  }) || null;
-}
-
-
-
-function resolveTshirtMasterDesign(designRef) {
-  const designs = tshirtMasterDesigns();
-  const raw = String(designRef || "").trim();
-  if (!raw) return null;
-
-  if (designs[raw]) return designs[raw];
-
-  const key = normalizedTshirtKey(raw);
-
-  return Object.values(designs).find(design =>
-    [
-      design?.id,
-      design?.managementName,
-      design?.salesName,
-      design?.legacyKey
-    ].filter(Boolean).some(value => normalizedTshirtKey(value) === key)
-  ) || null;
-}
-
-function resolveTshirtMasterColor(colorRef) {
-  const colors = tshirtMasterColors();
-  const raw = String(colorRef || "").trim();
-  if (!raw) return null;
-
-  if (colors[raw]) return colors[raw];
-
-  const key = normalizedTshirtKey(raw);
-
-  return Object.values(colors).find(color =>
-    [
-      color?.id,
-      color?.managementName,
-      color?.salesName,
-      color?.pinkoiName,
-      color?.legacyKey
-    ].filter(Boolean).some(value => normalizedTshirtKey(value) === key)
-  ) || null;
-}
-
-function resolveTshirtMasterSize(sizeRef) {
-  const sizes = tshirtMasterSizes();
-  const raw = String(sizeRef || "").trim();
-  if (!raw) return null;
-
-  if (sizes[raw]) return sizes[raw];
-
-  const normalizedSize = normalizePinkoiTshirtSize(raw);
-
-  return Object.values(sizes).find(size =>
-    [
-      size?.id,
-      size?.managementName,
-      size?.salesName
-    ].filter(Boolean).some(value =>
-      normalizePinkoiTshirtSize(value) === normalizedSize ||
-      normalizedTshirtKey(value) === normalizedTshirtKey(raw)
-    )
-  ) || null;
-}
-
-function canonicalPinkoiDesignNameFromTshirtMaster(masterDesign) {
-  if (!masterDesign) return "";
-
-  const sourceNames = [
-    masterDesign.managementName,
-    masterDesign.salesName,
-    masterDesign.legacyKey,
-    masterDesign.id
-  ].filter(Boolean);
-
-  const normalizedSources = sourceNames.map(normalizedTshirtKey);
-
-  // Known legacy/current aliases first.
-  for (const [canonicalName, aliases] of Object.entries(TSHIRT_MASTER_DESIGN_ALIASES)) {
-    const candidates = [
-      canonicalName,
-      ...aliases
-    ].map(normalizedTshirtKey);
-
-    if (normalizedSources.some(name => candidates.includes(name))) {
-      return canonicalName;
-    }
-  }
-
-  // If the T-shirt master uses a newer design that Pinkoi does not know yet,
-  // use its management/sales name as the Pinkoi canonical name.
-  return String(
-    masterDesign.salesName ||
-    masterDesign.managementName ||
-    masterDesign.legacyKey ||
-    ""
-  ).trim();
-}
-
-function existingPinkoiDesignByCanonicalName(canonicalName, masterDesign = null) {
-  const candidateNames = [
-    canonicalName,
-    masterDesign?.managementName,
-    masterDesign?.salesName,
-    masterDesign?.legacyKey
-  ].filter(Boolean).map(normalizedTshirtKey);
-
-  return state.designs.find(d => {
-    const pinkoiNames = [
-      d.internalName,
-      d.legacyName,
-      d.displayName?.ja,
-      d.displayName?.en,
-      d.displayName?.zhTW
-    ].filter(Boolean).map(normalizedTshirtKey);
-
-    return candidateNames.some(name => pinkoiNames.includes(name));
-  }) || null;
-}
-
-async function ensurePinkoiDesignsForTshirtMaster() {
-  if (!legacyStockState.ready) return 0;
-
-  const usedDesignIds = new Set();
-
-  for (const row of tshirtMasterInventoryEntries()) {
-    if (row.qty > 0 && row.designId) {
-      usedDesignIds.add(row.designId);
-    }
-  }
-
-  let added = 0;
-
-  for (const designId of usedDesignIds) {
-    const masterDesign =
-      resolveTshirtMasterDesign(designId) ||
-      {
-        id: String(designId || ""),
-        managementName: String(designId || ""),
-        salesName: String(designId || ""),
-        legacyKey: String(designId || "")
-      };
-
-    const canonicalName = canonicalPinkoiDesignNameFromTshirtMaster(masterDesign);
-    if (!canonicalName) continue;
-
-    const existing = existingPinkoiDesignByCanonicalName(canonicalName, masterDesign);
-
-    if (existing) {
-      // Preserve an alias back to the T-shirt master when useful.
-      const aliasName =
-        masterDesign.legacyKey ||
-        masterDesign.managementName ||
-        "";
-
-      if (aliasName && !existing.legacyName) {
-        const update = {
-          ...existing,
-          legacyName: aliasName,
-          updatedAt: new Date().toISOString()
-        };
-
-        await saveCollectionItem("designs", update);
-        Object.assign(existing, update);
-      }
-
-      continue;
-    }
-
-    const aliasName =
-      masterDesign.legacyKey ||
-      masterDesign.managementName ||
-      canonicalName;
-
-    const item = {
-      id: stableMasterId("design", canonicalName),
-      internalName: canonicalName,
-      code: makeDesignCode(canonicalName),
-      displayName: {
-        ja: canonicalName,
-        en: canonicalName,
-        zhTW: canonicalName
-      },
-      allowedBodyNames: ["Organic", "Vintage", "MIJ"],
-      legacyName: aliasName,
-      updatedAt: new Date().toISOString()
-    };
-
-    await saveCollectionItem("designs", item);
-
-    if (!state.designs.some(d => d.id === item.id)) {
-      state.designs.push(item);
-    }
-
-    added++;
-  }
-
-  if (added) {
-    renderMasters();
-    fillSelects();
-  }
-
-  return added;
-}
-
-function canonicalDesignForTshirtMaster(masterDesign) {
-  if (!masterDesign) return null;
-
-  const canonicalName = canonicalPinkoiDesignNameFromTshirtMaster(masterDesign);
-
-  const direct = existingPinkoiDesignByCanonicalName(
-    canonicalName,
-    masterDesign
-  );
-  if (direct) return direct;
-
-  // Realtime Firestore snapshots can arrive slightly after an auto-created
-  // Design. Fall back to the canonical seed/default object when possible.
-  const seedDesign =
-    seed.designs.find(
-      d => normalizedTshirtKey(d.internalName) === normalizedTshirtKey(canonicalName)
-    ) ||
-    ICELOLLY_DEFAULTS.designs.find(
-      d => normalizedTshirtKey(d.internalName) === normalizedTshirtKey(canonicalName)
-    );
-
-  return seedDesign || null;
-}
-
-function tshirtDesignForPinkoiDesign(pinkoiDesign) {
-  if (!pinkoiDesign) return null;
-
-  const targetNames = [
-    pinkoiDesign.internalName,
-    pinkoiDesign.legacyName,
-    ...(TSHIRT_MASTER_DESIGN_ALIASES[pinkoiDesign.internalName] || [])
-  ].filter(Boolean).map(normalizedTshirtKey);
-
-  return Object.values(tshirtMasterDesigns()).find(source => {
-    const sourceNames = [
-      source.managementName,
-      source.salesName,
-      source.legacyKey
-    ].filter(Boolean).map(normalizedTshirtKey);
-
-    return sourceNames.some(name => targetNames.includes(name));
-  }) || null;
-}
-
-function pinkoiColorForTshirtColor(masterColor, pinkoiBody) {
-  if (!masterColor || !pinkoiBody) return null;
-
-  const bodyName = pinkoiBody.internalName;
-  const allowedColorNames = new Set(BODY_COLOR_RULES[bodyName] || []);
-
-  const sourceNames = [
-    masterColor.pinkoiName,
-    masterColor.salesName,
-    masterColor.managementName,
-    masterColor.legacyKey
-  ].filter(Boolean).map(normalizedTshirtKey);
-
-  const bodyColors = state.colors.filter(color =>
-    !allowedColorNames.size || allowedColorNames.has(color.internalName)
-  );
-
-  const direct = bodyColors.find(color => {
-    const targetNames = [
-      color.internalName,
-      color.displayName?.ja,
-      color.displayName?.en,
-      color.displayName?.zhTW
-    ].filter(Boolean).map(normalizedTshirtKey);
-
-    return sourceNames.some(name => targetNames.includes(name));
-  });
-  if (direct) return direct;
-
-  const aliasMap = TSHIRT_MASTER_COLOR_ALIASES[bodyName] || {};
-  for (const [canonicalColorName, aliases] of Object.entries(aliasMap)) {
-    const normalizedAliases = aliases.map(normalizedTshirtKey);
-    if (sourceNames.some(name => normalizedAliases.includes(name))) {
-      return canonicalMasterByName(state.colors, canonicalColorName);
-    }
-  }
-
-  return null;
-}
-
-function tshirtColorForPinkoiColor(pinkoiColor, pinkoiBody, tshirtBody) {
-  if (!pinkoiColor || !pinkoiBody || !tshirtBody) return null;
-
-  const bodyName = pinkoiBody.internalName;
-  const aliases = [
-    pinkoiColor.internalName,
-    pinkoiColor.displayName?.ja,
-    pinkoiColor.displayName?.en,
-    ...(TSHIRT_MASTER_COLOR_ALIASES[bodyName]?.[pinkoiColor.internalName] || [])
-  ].filter(Boolean).map(normalizedTshirtKey);
-
-  return Object.values(tshirtMasterColors()).find(source => {
-    if (source.bodyId) {
-      const sourceBody = pinkoiBodyForTshirtBodyId(source.bodyId);
-      if (
-        sourceBody &&
-        normalizedTshirtKey(sourceBody.internalName) !==
-          normalizedTshirtKey(pinkoiBody.internalName)
-      ) {
-        return false;
-      }
-    }
-
-    const sourceNames = [
-      source.pinkoiName,
-      source.salesName,
-      source.managementName,
-      source.legacyKey
-    ].filter(Boolean).map(normalizedTshirtKey);
-
-    return sourceNames.some(name => aliases.includes(name));
-  }) || null;
-}
-
-function pinkoiSizeForTshirtSize(masterSize) {
-  if (!masterSize) return "";
-
-  const candidates = [
-    masterSize.managementName,
-    masterSize.salesName,
-    masterSize.id
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    const normalized = normalizePinkoiTshirtSize(candidate);
-    if (PINKOI_TSHIRT_SIZES.includes(normalized)) return normalized;
-  }
-
-  return "";
-}
-
-function tshirtSizeForPinkoiSize(size) {
-  const normalized = normalizePinkoiTshirtSize(size);
-  if (!PINKOI_TSHIRT_SIZES.includes(normalized)) return null;
-
-  return Object.values(tshirtMasterSizes()).find(source => {
-    const sourceNames = [
-      source.managementName,
-      source.salesName,
-      source.id
-    ].filter(Boolean);
-
-    return sourceNames.some(name =>
-      normalizePinkoiTshirtSize(name) === normalized
-    );
-  }) || null;
 }
 
 function missingLegacyDesignNames() {
   if (!legacyStockState.ready) return [];
 
-  return Object.values(tshirtMasterDesigns())
-    .filter(masterDesign => !canonicalDesignForTshirtMaster(masterDesign))
-    .map(tshirtMasterSourceName)
-    .filter(Boolean)
+  return Object.keys(legacyStockState.designs || {})
+    .filter(name => !canonicalDesignForLegacyName(name))
     .sort((a, b) => a.localeCompare(b));
-}
-
-function masterDesignBySourceName(sourceName) {
-  return resolveTshirtMasterDesign(sourceName);
 }
 
 function makeDesignCode(name) {
@@ -1191,12 +591,12 @@ function renderMissingLegacyDesigns() {
   if (!target) return;
 
   if (!state.user) {
-    target.innerHTML = `<div class="muted">ログインするとTシャツmasterと比較します。</div>`;
+    target.innerHTML = `<div class="muted">ログインすると旧Tシャツ在庫と比較します。</div>`;
     return;
   }
 
   if (!legacyStockState.ready) {
-    target.innerHTML = `<div class="muted">tshirtStock/master を読み込み中…</div>`;
+    target.innerHTML = `<div class="muted">旧Tシャツ在庫を読み込み中…</div>`;
     return;
   }
 
@@ -1207,26 +607,26 @@ function renderMissingLegacyDesigns() {
     return;
   }
 
-  target.innerHTML = missing.map((sourceName, i) => `
+  target.innerHTML = missing.map((legacyName, i) => `
     <div class="legacy-design-import-row">
       <div class="legacy-design-source">
-        <small>Tシャツmaster</small>
-        <strong>${esc(sourceName)}</strong>
+        <small>旧Tシャツ在庫</small>
+        <strong>${esc(legacyName)}</strong>
       </div>
 
       <label class="legacy-design-name-field">
         <small>Pinkoi正規名</small>
         <input
           id="legacyDesignName_${i}"
-          data-legacy-design-name="${esc(sourceName)}"
-          value="${esc(sourceName)}"
+          data-legacy-design-name="${esc(legacyName)}"
+          value="${esc(legacyName)}"
         >
       </label>
 
       <button
         class="button small"
         type="button"
-        data-import-legacy-design="${esc(sourceName)}"
+        data-import-legacy-design="${esc(legacyName)}"
         data-input-id="legacyDesignName_${i}"
       >
         追加
@@ -1235,7 +635,7 @@ function renderMissingLegacyDesigns() {
   `).join("");
 }
 
-async function importLegacyDesign(sourceName, canonicalName) {
+async function importLegacyDesign(legacyName, canonicalName) {
   const cleanCanonical = String(canonicalName || "").trim();
 
   if (!cleanCanonical) {
@@ -1243,20 +643,14 @@ async function importLegacyDesign(sourceName, canonicalName) {
     return;
   }
 
-  const masterDesign = masterDesignBySourceName(sourceName);
-  const aliasName =
-    masterDesign?.legacyKey ||
-    masterDesign?.managementName ||
-    sourceName;
-
   const existing = state.designs.find(
-    d => normalizedTshirtKey(d.internalName) === normalizedTshirtKey(cleanCanonical)
+    d => normalizeName(d.internalName) === normalizeName(cleanCanonical)
   );
 
   if (existing) {
     const update = {
       ...existing,
-      legacyName: aliasName,
+      legacyName,
       updatedAt: new Date().toISOString()
     };
 
@@ -1267,7 +661,7 @@ async function importLegacyDesign(sourceName, canonicalName) {
     renderLegacyStockDiagnostics();
     await reconcileLegacyStockToPinkoi(true);
 
-    showToast(`${cleanCanonical} をTシャツmasterに紐付けて在庫を同期しました`);
+    showToast(`${cleanCanonical} に旧在庫名を紐付けて在庫を同期しました`);
     return;
   }
 
@@ -1280,8 +674,10 @@ async function importLegacyDesign(sourceName, canonicalName) {
       en: cleanCanonical,
       zhTW: cleanCanonical
     },
-    allowedBodyNames: ["Organic", "Vintage", "MIJ"],
-    legacyName: aliasName,
+    // Old T-shirt inventory contains Organic/Vintage stock.
+    // MIJ can be enabled later from the Design master editor if needed.
+    allowedBodyNames: ["Organic", "Vintage"],
+    legacyName,
     updatedAt: new Date().toISOString()
   };
 
@@ -1293,322 +689,164 @@ async function importLegacyDesign(sourceName, canonicalName) {
 
   renderMissingLegacyDesigns();
   renderLegacyStockDiagnostics();
+
+  // The imported design already exists in tshirtStock/shared, so bring its
+  // physical stock into Pinkoi Inventory immediately.
   await reconcileLegacyStockToPinkoi(true);
 
-  showToast(`${cleanCanonical} を追加してTシャツmaster在庫を同期しました`);
+  showToast(`${cleanCanonical} を追加して在庫を同期しました`);
 }
 
-function tshirtMasterInventoryEntries() {
-  const data = tshirtMasterData();
-  const inventory = data?.inventory_v2 || {};
-  const bodies = tshirtMasterBodies();
-  const designs = tshirtMasterDesigns();
-  const colors = tshirtMasterColors();
-  const sizes = tshirtMasterSizes();
-  const rows = [];
 
-  for (const [inventoryBodyId, designTree] of Object.entries(inventory)) {
-    for (const [designId, colorTree] of Object.entries(designTree || {})) {
-      for (const [colorId, sizeTree] of Object.entries(colorTree || {})) {
-        const color =
-          resolveTshirtMasterColor(colorId) ||
-          {
-            id: String(colorId || ""),
-            managementName: String(colorId || ""),
-            salesName: String(colorId || ""),
-            pinkoiName: String(colorId || "")
-          };
+function legacyMappingForInventoryItem(item) {
+  const body = byId(state.bodies, item?.bodyId);
+  const design = byId(state.designs, item?.designId);
+  const color = byId(state.colors, item?.colorId);
 
-        // Color master is authoritative for Body assignment.
-        // bodyId can be either a master key/id or a management name such as
-        // Organic / Vintage / MIJ.
-        const resolvedBodyId = color?.bodyId || inventoryBodyId;
-        const body =
-          resolveTshirtMasterBody(resolvedBodyId) ||
-          resolveTshirtMasterBody(inventoryBodyId) ||
-          {
-            id: String(resolvedBodyId || inventoryBodyId || ""),
-            managementName: String(resolvedBodyId || inventoryBodyId || ""),
-            salesName: ""
-          };
+  if (!body || !design || !color) return null;
 
-        const design =
-          resolveTshirtMasterDesign(designId) ||
-          {
-            id: String(designId || ""),
-            managementName: String(designId || ""),
-            salesName: String(designId || ""),
-            legacyKey: String(designId || "")
-          };
+  const legacyDesign = legacyDesignKeyForCanonical(design.internalName);
+  const legacyColor = LEGACY_TSHIRT_COLOR_MAP[body.internalName]?.[color.internalName];
+  const size = normalizePinkoiTshirtSize(item.size);
 
-        for (const [sizeId, cell] of Object.entries(sizeTree || {})) {
-          const size =
-            resolveTshirtMasterSize(sizeId) ||
-            {
-              id: String(sizeId || ""),
-              managementName: String(sizeId || ""),
-              salesName: String(sizeId || "")
-            };
+  if (!legacyDesign || !legacyColor || !PINKOI_TSHIRT_SIZES.includes(size)) {
+    return null;
+  }
 
-          const rawQty =
-            typeof cell === "number"
-              ? cell
-              : cell?.qty;
+  return {
+    bodyName: body.internalName,
+    designName: design.internalName,
+    colorName: color.internalName,
+    legacyDesign,
+    legacyColor,
+    size
+  };
+}
 
-          rows.push({
-            inventoryBodyId,
-            resolvedBodyId,
-            bodyMismatch: Boolean(color?.bodyId && color.bodyId !== inventoryBodyId),
-            body,
-            design,
-            color,
-            size,
-            bodyId: resolvedBodyId,
-            designId,
-            colorId,
-            sizeId,
-            qty: Math.max(0, Number(rawQty || 0))
-          });
-        }
+
+function legacyStockTotal() {
+  let total = 0;
+
+  for (const design of Object.values(legacyStockState.designs || {})) {
+    for (const sizes of Object.values(design?.stock || {})) {
+      for (const value of Object.values(sizes || {})) {
+        total += Math.max(0, Number(value || 0));
       }
     }
   }
 
-  return rows;
-}
-
-function tshirtMasterStockTotal() {
-  return tshirtMasterInventoryEntries()
-    .reduce((sum, row) => sum + row.qty, 0);
-}
-
-function isTshirtSyncExcluded(bodyName, designMaster, colorName) {
-  if (!designMaster) return false;
-
-  if (
-    Array.isArray(designMaster.disabledBodyNames) &&
-    designMaster.disabledBodyNames.includes(bodyName)
-  ) {
-    return true;
-  }
-
-  const key = `${bodyName}__${colorName}`;
-  return (
-    Array.isArray(designMaster.disabledInventoryKeys) &&
-    designMaster.disabledInventoryKeys.includes(key)
-  );
-}
-
-function mappedTshirtRows() {
-  const mapped = [];
-  const issues = [];
-
-  for (const row of tshirtMasterInventoryEntries()) {
-    if (row.qty <= 0) continue;
-
-    const pinkoiBody = pinkoiBodyForTshirtBodyId(row.resolvedBodyId);
-    if (!pinkoiBody) {
-      issues.push({
-        type: "body",
-        label: [
-          row.body?.managementName || "Body不明",
-          row.resolvedBodyId ? `(${row.resolvedBodyId})` : ""
-        ].filter(Boolean).join(" "),
-        stock: row.qty,
-        reason: "Pinkoi Body未対応"
-      });
-      continue;
-    }
-
-    const pinkoiDesign = canonicalDesignForTshirtMaster(row.design);
-    if (!pinkoiDesign) {
-      const canonicalDesignName =
-        canonicalPinkoiDesignNameFromTshirtMaster(row.design) ||
-        tshirtMasterSourceName(row.design) ||
-        row.designId;
-
-      issues.push({
-        type: "design",
-        label: canonicalDesignName,
-        stock: row.qty,
-        reason: "Pinkoi Design未登録"
-      });
-      continue;
-    }
-
-    const pinkoiColor = pinkoiColorForTshirtColor(row.color, pinkoiBody);
-    if (!pinkoiColor) {
-      issues.push({
-        type: "color",
-        label: `${pinkoiDesign.internalName} / ${row.color?.managementName || row.colorId}`,
-        stock: row.qty,
-        reason: "Color対応未設定"
-      });
-      continue;
-    }
-
-    const size = pinkoiSizeForTshirtSize(row.size);
-    if (!size) {
-      issues.push({
-        type: "size",
-        label: `${pinkoiDesign.internalName} / ${pinkoiColor.internalName} / ${row.size?.managementName || row.sizeId}`,
-        stock: row.qty,
-        reason: "Size対応未設定"
-      });
-      continue;
-    }
-
-    const excluded = isTshirtSyncExcluded(
-      pinkoiBody.internalName,
-      pinkoiDesign,
-      pinkoiColor.internalName
-    );
-
-    mapped.push({
-      source: row,
-      pinkoiBody,
-      pinkoiDesign,
-      pinkoiColor,
-      size,
-      qty: row.qty,
-      excluded
-    });
-  }
-
-  return { mapped, issues };
-}
-
-function tshirtMasterTargetMap() {
-  const { mapped, issues } = mappedTshirtRows();
-  const target = new Map();
-  let excludedTotal = 0;
-
-  for (const row of mapped) {
-    if (row.excluded) {
-      excludedTotal += row.qty;
-      issues.push({
-        type: "excluded",
-        label: `${row.pinkoiDesign.internalName} / ${row.pinkoiColor.internalName}`,
-        stock: row.qty,
-        reason: "同期除外"
-      });
-      continue;
-    }
-
-    const key = [
-      row.pinkoiBody.id,
-      row.pinkoiDesign.id,
-      row.pinkoiColor.id,
-      row.size
-    ].join("__");
-
-    const current = target.get(key);
-    if (current) {
-      current.qty += row.qty;
-    } else {
-      target.set(key, {
-        bodyId: row.pinkoiBody.id,
-        designId: row.pinkoiDesign.id,
-        colorId: row.pinkoiColor.id,
-        size: row.size,
-        qty: row.qty
-      });
-    }
-  }
-
-  return { target, issues, excludedTotal };
-}
-
-function pinkoiVariantMasterKey(item) {
-  return [
-    item.bodyId,
-    item.designId,
-    item.colorId,
-    normalizePinkoiTshirtSize(item.size)
-  ].join("__");
-}
-
-function isPinkoiVariantControlledByTshirtMaster(item) {
-  const pinkoiBody = byId(state.bodies, item?.bodyId);
-  const pinkoiDesign = byId(state.designs, item?.designId);
-  const pinkoiColor = byId(state.colors, item?.colorId);
-
-  if (!pinkoiBody || !pinkoiDesign || !pinkoiColor) return false;
-
-  const tshirtBody = tshirtBodyForPinkoiBody(pinkoiBody);
-  if (!tshirtBody) return false;
-
-  const tshirtDesign = tshirtDesignForPinkoiDesign(pinkoiDesign);
-  if (!tshirtDesign) return false;
-
-  const tshirtColor = tshirtColorForPinkoiColor(
-    pinkoiColor,
-    pinkoiBody,
-    tshirtBody
-  );
-  if (!tshirtColor) return false;
-
-  const tshirtSize = tshirtSizeForPinkoiSize(item.size);
-  if (!tshirtSize) return false;
-
-  if (
-    isTshirtSyncExcluded(
-      pinkoiBody.internalName,
-      pinkoiDesign,
-      pinkoiColor.internalName
-    )
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-
-function aggregateLegacySyncIssues(issues) {
-  const grouped = new Map();
-
-  for (const issue of issues || []) {
-    const key = `${issue.type}__${issue.label}__${issue.reason}`;
-    const current = grouped.get(key);
-
-    if (current) {
-      current.stock += Math.max(0, Number(issue.stock || 0));
-    } else {
-      grouped.set(key, {
-        ...issue,
-        stock: Math.max(0, Number(issue.stock || 0))
-      });
-    }
-  }
-
-  return [...grouped.values()].sort((a, b) =>
-    String(a.reason).localeCompare(String(b.reason), "ja") ||
-    String(a.label).localeCompare(String(b.label), "ja")
-  );
+  return total;
 }
 
 function legacyStockDiagnostics() {
-  const built = tshirtMasterTargetMap();
-
-  const aggregatedIssues = aggregateLegacySyncIssues(built.issues);
-
   const result = {
-    sourceTotal: tshirtMasterStockTotal(),
-    mappedTotal: [...built.target.values()]
-      .reduce((sum, row) => sum + row.qty, 0),
+    sourceTotal: legacyStockTotal(),
+    mappedTotal: 0,
     appTotal: state.inventory.reduce(
       (sum, v) => sum + Math.max(0, Number(v.stock || 0)),
       0
     ),
     unmatchedTotal: 0,
-    excludedTotal: built.excludedTotal,
-    issues: aggregatedIssues
+    excludedTotal: 0,
+    issues: []
   };
 
-  result.unmatchedTotal = aggregatedIssues
-    .filter(issue => issue.type !== "excluded")
-    .reduce((sum, issue) => sum + Math.max(0, Number(issue.stock || 0)), 0);
+  const reverseColors = {};
+
+  for (const [bodyName, colorMap] of Object.entries(LEGACY_TSHIRT_COLOR_MAP)) {
+    for (const [canonicalColorName, legacyColorName] of Object.entries(colorMap)) {
+      reverseColors[legacyColorName] = {
+        bodyName,
+        canonicalColorName
+      };
+    }
+  }
+
+  for (const [legacyDesignName, legacyDesign] of Object.entries(
+    legacyStockState.designs || {}
+  )) {
+    const designMaster = canonicalDesignForLegacyName(legacyDesignName);
+
+    for (const [legacyColorName, sizes] of Object.entries(
+      legacyDesign?.stock || {}
+    )) {
+      const colorTotal = Object.values(sizes || {}).reduce(
+        (sum, value) => sum + Math.max(0, Number(value || 0)),
+        0
+      );
+
+      if (colorTotal <= 0) continue;
+
+      if (!designMaster) {
+        result.unmatchedTotal += colorTotal;
+        result.issues.push({
+          type: "design",
+          label: `${legacyDesignName}`,
+          stock: colorTotal,
+          reason: "Pinkoi Design未登録"
+        });
+        continue;
+      }
+
+      const colorInfo = reverseColors[legacyColorName];
+
+      if (!colorInfo) {
+        result.unmatchedTotal += colorTotal;
+        result.issues.push({
+          type: "color",
+          label: `${designMaster.internalName} / ${legacyColorName}`,
+          stock: colorTotal,
+          reason: "Color対応未設定"
+        });
+        continue;
+      }
+
+      const disabledBody =
+        Array.isArray(designMaster.disabledBodyNames) &&
+        designMaster.disabledBodyNames.includes(colorInfo.bodyName);
+
+      const disabledKey =
+        `${colorInfo.bodyName}__${colorInfo.canonicalColorName}`;
+
+      const disabledColor =
+        Array.isArray(designMaster.disabledInventoryKeys) &&
+        designMaster.disabledInventoryKeys.includes(disabledKey);
+
+      if (disabledBody || disabledColor) {
+        result.excludedTotal += colorTotal;
+        result.issues.push({
+          type: "excluded",
+          label: `${designMaster.internalName} / ${colorInfo.canonicalColorName}`,
+          stock: colorTotal,
+          reason: "同期除外"
+        });
+        continue;
+      }
+
+      const bodyMaster = canonicalMasterByName(
+        state.bodies,
+        colorInfo.bodyName
+      );
+
+      const colorMaster = canonicalMasterByName(
+        state.colors,
+        colorInfo.canonicalColorName
+      );
+
+      if (!bodyMaster || !colorMaster) {
+        result.unmatchedTotal += colorTotal;
+        result.issues.push({
+          type: "master",
+          label: `${designMaster.internalName} / ${colorInfo.canonicalColorName}`,
+          stock: colorTotal,
+          reason: "Body / Colorマスター不足"
+        });
+        continue;
+      }
+
+      result.mappedTotal += colorTotal;
+    }
+  }
 
   return result;
 }
@@ -1623,22 +861,16 @@ function renderLegacyStockDiagnostics() {
   }
 
   if (!legacyStockState.ready) {
-    target.innerHTML = `<div class="muted">tshirtStock/master を確認中…</div>`;
+    target.innerHTML = `<div class="muted">旧Tシャツ在庫を確認中…</div>`;
     return;
   }
 
-  const authority = tshirtMasterData()?.inventoryAuthority;
   const d = legacyStockDiagnostics();
   const difference = d.mappedTotal - d.appTotal;
 
-  const authorityNote = authority === "master"
-    ? `<span class="sync-total-ok">master正式運用</span>`
-    : `<span class="sync-total-warning">inventoryAuthority=${esc(authority || "未設定")}</span>`;
-
   const totals = `
     <div class="legacy-sync-totals">
-      ${authorityNote}
-      <span>Tシャツmaster <strong>${d.sourceTotal}</strong></span>
+      <span>旧Tシャツ在庫 <strong>${d.sourceTotal}</strong></span>
       <span>同期対象 <strong>${d.mappedTotal}</strong></span>
       <span>Pinkoi実在庫 <strong>${d.appTotal}</strong></span>
       <span class="${difference === 0 ? "sync-total-ok" : "sync-total-warning"}">
@@ -1648,8 +880,14 @@ function renderLegacyStockDiagnostics() {
   `;
 
   const issueSummary = [];
-  if (d.unmatchedTotal > 0) issueSummary.push(`未対応 ${d.unmatchedTotal}枚`);
-  if (d.excludedTotal > 0) issueSummary.push(`同期除外 ${d.excludedTotal}枚`);
+
+  if (d.unmatchedTotal > 0) {
+    issueSummary.push(`未対応 ${d.unmatchedTotal}枚`);
+  }
+
+  if (d.excludedTotal > 0) {
+    issueSummary.push(`同期除外 ${d.excludedTotal}枚`);
+  }
 
   const issues = d.issues.length
     ? `
@@ -1669,7 +907,7 @@ function renderLegacyStockDiagnostics() {
         </div>
       </details>
     `
-    : `<div class="muted sync-total-ok">Tシャツmasterの在庫はすべて同期対象です。</div>`;
+    : `<div class="muted sync-total-ok">旧Tシャツ在庫はすべて同期対象です。</div>`;
 
   target.innerHTML = totals + issues;
 }
@@ -1683,13 +921,12 @@ function setLegacySyncStatus(message, stateName = "") {
 
 function scheduleLegacyStockReconcile(delay = 180) {
   if (APP_CONFIG.demoMode || !state.user) return;
-
   clearTimeout(legacyReconcileTimer);
   legacyReconcileTimer = setTimeout(() => {
     reconcileLegacyStockToPinkoi().catch(err => {
-      console.error("tshirt master reconcile failed", err);
+      console.error("legacy stock reconcile failed", err);
       legacyStockState.error = err?.message || String(err);
-      setLegacySyncStatus("Tシャツmaster同期エラー", "error");
+      setLegacySyncStatus("Tシャツ在庫同期エラー", "error");
     });
   }, delay);
 }
@@ -1697,145 +934,174 @@ function scheduleLegacyStockReconcile(delay = 180) {
 async function reconcileLegacyStockToPinkoi(force = false) {
   if (APP_CONFIG.demoMode || !state.user || !firebaseApi) return;
   if (!legacyStockState.ready) return;
-  if (legacyStockState.syncing) return;
+  if (legacyStockState.syncing && !force) return;
   if (!state.bodies.length || !state.designs.length || !state.colors.length) return;
 
   legacyStockState.syncing = true;
-  setLegacySyncStatus("tshirtStock/master を同期中…", "syncing");
+  setLegacySyncStatus("Tシャツ在庫を同期中…", "syncing");
 
   try {
-    await ensureCanonicalPinkoiBodiesForTshirtMaster();
-    await ensurePinkoiDesignsForTshirtMaster();
-
-    const { target } = tshirtMasterTargetMap();
-    const existingByKey = new Map(
-      state.inventory.map(v => [pinkoiVariantMasterKey(v), v])
-    );
-
     const writes = [];
     let changed = 0;
 
-    for (const [key, targetRow] of target.entries()) {
-      const existing = existingByKey.get(key);
-      const nextStock = Math.max(0, Number(targetRow.qty || 0));
+    for (const designMaster of state.designs) {
+      const canonicalDesignName = designMaster.internalName;
+      const legacyDesignKey = legacyDesignKeyForCanonical(canonicalDesignName);
+      const legacyDesign = legacyStockState.designs?.[legacyDesignKey];
+      if (!legacyDesign) continue;
 
-      if (existing && Number(existing.stock || 0) === nextStock) continue;
+      for (const [bodyName, colorMap] of Object.entries(LEGACY_TSHIRT_COLOR_MAP)) {
+        const bodyMaster = canonicalMasterByName(state.bodies, bodyName);
+        if (!bodyMaster) continue;
 
-      const bodyMaster = byId(state.bodies, targetRow.bodyId);
-      const designMaster = byId(state.designs, targetRow.designId);
-      const colorMaster = byId(state.colors, targetRow.colorId);
+        // A deleted Design × Body combination must not be recreated by the
+        // legacy T-shirt stock realtime sync.
+        if (Array.isArray(designMaster.disabledBodyNames) &&
+            designMaster.disabledBodyNames.includes(bodyName)) {
+          continue;
+        }
 
-      const item = {
-        id: existing?.id || `master_${cleanSkuPart(bodyMaster?.code || bodyMaster?.internalName)}_${cleanSkuPart(designMaster?.code || designMaster?.internalName)}_${cleanSkuPart(colorMaster?.code || colorMaster?.internalName)}_${cleanSkuPart(targetRow.size)}`,
-        bodyId: targetRow.bodyId,
-        designId: targetRow.designId,
-        colorId: targetRow.colorId,
-        size: targetRow.size,
-        sku: existing?.sku || `${generatedSkuPrefix(targetRow.bodyId, targetRow.designId, targetRow.colorId)}_${cleanSkuPart(targetRow.size)}`,
-        stock: nextStock,
-        pinkoiStock: Number(existing?.pinkoiStock || 0),
-        priceJpy: Number(existing?.priceJpy || 0),
-        pinkoiProductId: existing?.pinkoiProductId || "",
-        updatedAt: new Date().toISOString(),
-        stockSource: "tshirtStock/master"
-      };
+        for (const [canonicalColorName, legacyColorName] of Object.entries(colorMap)) {
+          const colorMaster = canonicalMasterByName(state.colors, canonicalColorName);
+          if (!colorMaster) continue;
 
-      writes.push(
-        firebaseApi.setDoc(
-          firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.inventory, item.id),
-          item,
-          { merge: true }
-        )
-      );
-      changed++;
-    }
+          const disabledInventoryKey = `${bodyName}__${canonicalColorName}`;
+          if (Array.isArray(designMaster.disabledInventoryKeys) &&
+              designMaster.disabledInventoryKeys.includes(disabledInventoryKey)) {
+            continue;
+          }
 
-    for (const existing of state.inventory) {
-      const key = pinkoiVariantMasterKey(existing);
-      if (target.has(key)) continue;
-      if (!isPinkoiVariantControlledByTshirtMaster(existing)) continue;
-      if (Number(existing.stock || 0) === 0) continue;
+          for (const size of PINKOI_TSHIRT_SIZES) {
+            const legacyStock = Number(legacyDesign.stock?.[legacyColorName]?.[size] ?? 0);
 
-      writes.push(
-        firebaseApi.setDoc(
-          firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.inventory, existing.id),
-          {
-            stock: 0,
-            stockSource: "tshirtStock/master",
-            updatedAt: new Date().toISOString()
-          },
-          { merge: true }
-        )
-      );
-      changed++;
+            const existing = state.inventory.find(v =>
+              v.bodyId === bodyMaster.id &&
+              v.designId === designMaster.id &&
+              v.colorId === colorMaster.id &&
+              normalizePinkoiTshirtSize(v.size) === size
+            );
+
+            // Do not create hundreds of empty variants. Existing variants are
+            // still pulled to zero when the legacy stock becomes zero.
+            if (!existing && legacyStock === 0) continue;
+            if (existing && Number(existing.stock || 0) === legacyStock) continue;
+
+            const item = {
+              id: existing?.id || `legacy_${cleanSkuPart(bodyMaster.code || bodyName)}_${cleanSkuPart(designMaster.code || canonicalDesignName)}_${cleanSkuPart(colorMaster.code || canonicalColorName)}_${cleanSkuPart(size)}`,
+              bodyId: bodyMaster.id,
+              designId: designMaster.id,
+              colorId: colorMaster.id,
+              size,
+              sku: existing?.sku || `${generatedSkuPrefix(bodyMaster.id, designMaster.id, colorMaster.id)}_${cleanSkuPart(size)}`,
+              stock: legacyStock,
+              pinkoiStock: Number(existing?.pinkoiStock || 0),
+              priceJpy: Number(existing?.priceJpy || 0),
+              pinkoiProductId: existing?.pinkoiProductId || "",
+              updatedAt: new Date().toISOString(),
+              stockSource: "tshirtStock/shared"
+            };
+
+            writes.push(
+              firebaseApi.setDoc(
+                firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS.inventory, item.id),
+                item,
+                { merge: true }
+              )
+            );
+            changed++;
+          }
+        }
+      }
     }
 
     if (writes.length) await Promise.all(writes);
 
     legacyStockState.lastSyncedAt = new Date();
     legacyStockState.error = "";
-
-    const time = legacyStockState.lastSyncedAt.toLocaleTimeString(
-      "ja-JP",
-      { hour: "2-digit", minute: "2-digit" }
-    );
-
-    setLegacySyncStatus(
-      `Tシャツmaster 同期済み ${time}${changed ? ` / ${changed}件更新` : ""}`,
-      "ok"
-    );
-
+    const time = legacyStockState.lastSyncedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    setLegacySyncStatus(`Tシャツ在庫 同期済み ${time}${changed ? ` / ${changed}件更新` : ""}`, "ok");
     renderLegacyStockDiagnostics();
+
+    // Firestore inventory snapshots arrive asynchronously after writes.
+    // Refresh again shortly after so the displayed app total catches up.
     setTimeout(renderLegacyStockDiagnostics, 500);
   } finally {
     legacyStockState.syncing = false;
   }
 }
 
-async function syncInventoryItemToLegacy() {
-  return;
+async function ensureLegacyStockLoaded() {
+  if (legacyStockState.ready) return true;
+  if (!firebaseApi || !state.user) return false;
+
+  const ref = firebaseApi.doc(firebaseApi.db, "tshirtStock", "shared");
+  const snap = await firebaseApi.getDoc(ref);
+  if (!snap.exists()) return false;
+
+  legacyStockState.designs = snap.data()?.designs || {};
+  legacyStockState.ready = true;
+  return true;
+}
+
+async function syncInventoryItemToLegacy(item) {
+  if (APP_CONFIG.demoMode || !firebaseApi || !state.user) return;
+
+  const mapping = legacyMappingForInventoryItem(item);
+  if (!mapping) return; // MIJ and unmapped designs stay Pinkoi-only.
+
+  try {
+    const loaded = await ensureLegacyStockLoaded();
+    if (!loaded) return;
+
+    // Do not create a malformed design object in the old app. Sync only
+    // designs that are already present in tshirtStock/shared.
+    if (!legacyStockState.designs?.[mapping.legacyDesign]) return;
+
+    const ref = firebaseApi.doc(firebaseApi.db, "tshirtStock", "shared");
+    const field = new firebaseApi.FieldPath(
+      "designs",
+      mapping.legacyDesign,
+      "stock",
+      mapping.legacyColor,
+      mapping.size
+    );
+
+    await firebaseApi.updateDoc(
+      ref,
+      field,
+      Math.max(0, Number(item.stock || 0)),
+      "updatedAt",
+      firebaseApi.serverTimestamp()
+    );
+  } catch (err) {
+    console.error("legacy stock push failed", err);
+    legacyStockState.error = err?.message || String(err);
+    setLegacySyncStatus("Tシャツ在庫 書き込みエラー", "error");
+  }
 }
 
 function startLegacyStockRealtime() {
-  const ref = firebaseApi.doc(firebaseApi.db, "tshirtStock", "master");
+  const ref = firebaseApi.doc(firebaseApi.db, "tshirtStock", "shared");
 
   const unsub = firebaseApi.onSnapshot(ref, snap => {
     if (!snap.exists()) {
       legacyStockState.ready = false;
-      legacyStockState.master = null;
-      setLegacySyncStatus("tshirtStock/master がありません", "error");
+      legacyStockState.designs = {};
+      setLegacySyncStatus("旧Tシャツ在庫データがありません", "error");
       return;
     }
 
-    legacyStockState.master = snap.data() || {};
+    legacyStockState.designs = snap.data()?.designs || {};
     legacyStockState.ready = true;
     legacyStockState.error = "";
-
     renderMissingLegacyDesigns();
     renderLegacyStockDiagnostics();
-
-    ensureCanonicalPinkoiBodiesForTshirtMaster()
-      .then(async () => {
-        await ensurePinkoiDesignsForTshirtMaster();
-        renderMissingLegacyDesigns();
-        renderLegacyStockDiagnostics();
-        scheduleLegacyStockReconcile(40);
-      })
-      .catch(err => {
-        console.error("Pinkoi Body / Design auto setup failed", err);
-        scheduleLegacyStockReconcile(80);
-      });
+    scheduleLegacyStockReconcile(80);
   }, err => {
-    console.error("tshirtStock/master snapshot failed", err);
+    console.error("legacy tshirt stock snapshot failed", err);
     legacyStockState.ready = false;
-    legacyStockState.master = null;
     legacyStockState.error = err?.message || String(err);
-
-    const permission = String(err?.code || "").includes("permission")
-      ? "（Firestoreルールで tshirtStock/master のread許可を確認してください）"
-      : "";
-
-    setLegacySyncStatus(`Tシャツmaster 同期エラー${permission}`, "error");
+    setLegacySyncStatus("Tシャツ在庫 同期エラー", "error");
   });
 
   unsubscribers.push(unsub);
@@ -1862,6 +1128,9 @@ let unsubscribers = [];
 let XLSXLib = null;
 let selectedPinkoiProductKeys = new Set();
 let selectedInventoryColorKeys = new Set();
+
+let salesManagerDiagnosticResult = null;
+
 
 // Firestore上ではPinkoi専用コレクションを使います。
 // 既存のTシャツ在庫と同じFirebaseプロジェクトを使ってもデータは混ざりません。
@@ -1949,27 +1218,18 @@ async function initFirebase() {
       state.inventory = [];
       state.pinkoiProducts = [];
       legacyStockState.ready = false;
-      legacyStockState.master = null;
+      legacyStockState.designs = {};
       legacyStockState.error = "";
       setLegacySyncStatus("ログインするとTシャツ在庫と同期します");
+      salesManagerDiagnosticResult = null;
       render();
     }
   });
 }
 
 async function login() {
-  try {
-    const p = new firebaseApi.GoogleAuthProvider();
-    await firebaseApi.signInWithPopup(firebaseApi.auth, p);
-  } catch (err) {
-    console.error("Google login failed", err);
-    const code = String(err?.code || "");
-    const message =
-      code.includes("popup-blocked")
-        ? "ログイン画面がブロックされました。Safariのポップアップ設定を確認してください。"
-        : `Googleログインに失敗しました${code ? `: ${code}` : ""}`;
-    showToast(message);
-  }
+  const p = new firebaseApi.GoogleAuthProvider();
+  await firebaseApi.signInWithPopup(firebaseApi.auth, p);
 }
 async function logout() { await firebaseApi.signOut(firebaseApi.auth); }
 
@@ -2005,6 +1265,10 @@ async function saveCollectionItem(collectionName, item) {
     return;
   }
   await firebaseApi.setDoc(firebaseApi.doc(firebaseApi.db, FIRESTORE_COLLECTIONS[collectionName], item.id), item, { merge: true });
+
+  if (collectionName === "inventory") {
+    await syncInventoryItemToLegacy(item);
+  }
 }
 
 async function deleteCollectionItem(collectionName, id) {
@@ -2048,6 +1312,961 @@ function generatedTitle(bodyId, designId, lang="en") {
   return parts.filter(Boolean).join(" ");
 }
 
+
+// ============================================================
+// Sales Manager linkage diagnostics
+// Read-only: these functions never call setDoc/updateDoc/deleteDoc.
+// ============================================================
+
+const SALES_DIAGNOSTIC_REASON_LABELS = {
+  body: "Body未対応",
+  design: "Design未対応",
+  color: "Color未対応",
+  size: "Size未対応",
+  ambiguous_body: "Body候補が複数あります",
+  ambiguous_design: "Design候補が複数あります",
+  ambiguous_color: "Color候補が複数あります",
+  ambiguous_size: "Size候補が複数あります"
+};
+
+function diagText(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeDiagnosticValue(value) {
+  return diagText(value)
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/grey/g, "gray")
+    .replace(/\s+/gu, "");
+}
+
+function diagnosticDisplayNames(value) {
+  if (!value) return [];
+  if (typeof value === "string" || typeof value === "number") {
+    return [diagText(value)].filter(Boolean);
+  }
+  if (typeof value === "object") {
+    return Object.values(value).flatMap(diagnosticDisplayNames).filter(Boolean);
+  }
+  return [];
+}
+
+function diagnosticCandidateValues(item, fallbackId = "") {
+  return [
+    fallbackId,
+    item?.id,
+    item?.internalName,
+    item?.managementName,
+    item?.salesName,
+    item?.legacyKey,
+    item?.pinkoiName,
+    item?.code,
+    item?.name,
+    ...diagnosticDisplayNames(item?.displayName)
+  ]
+    .map(diagText)
+    .filter(Boolean);
+}
+
+function diagnosticDisplayName(item, fallback = "") {
+  return (
+    diagText(item?.internalName) ||
+    diagText(item?.managementName) ||
+    diagnosticDisplayNames(item?.displayName)[0] ||
+    diagText(item?.salesName) ||
+    diagText(item?.pinkoiName) ||
+    diagText(item?.legacyKey) ||
+    diagText(item?.code) ||
+    diagText(fallback)
+  );
+}
+
+function diagnosticDisplayNameField(item) {
+  const names = diagnosticDisplayNames(item?.displayName);
+  return names.join(" / ");
+}
+
+function diagnosticMasterEntries(source) {
+  if (Array.isArray(source)) {
+    return source
+      .filter(Boolean)
+      .map((item, index) => [diagText(item?.id) || String(index), item]);
+  }
+  return Object.entries(source || {});
+}
+
+function buildDiagnosticMasterIndex(source) {
+  const masterMap = {};
+  const reverse = new Map();
+
+  diagnosticMasterEntries(source).forEach(([key, raw]) => {
+    const id = diagText(raw?.id) || diagText(key);
+    if (!id) return;
+
+    const item = { ...raw, id };
+    masterMap[id] = item;
+
+    diagnosticCandidateValues(item, id).forEach(value => {
+      const normalized = normalizeDiagnosticValue(value);
+      if (!normalized) return;
+      if (!reverse.has(normalized)) reverse.set(normalized, new Set());
+      reverse.get(normalized).add(id);
+    });
+  });
+
+  return { masterMap, reverse };
+}
+
+function resolveDiagnosticMaster({
+  pinkoiId = "",
+  pinkoiItem = null,
+  index
+}) {
+  const id = diagText(pinkoiId);
+
+  // A real Firestore/master ID match is definitive.
+  if (id && index.masterMap[id]) {
+    return {
+      status: "matched",
+      id,
+      candidateIds: [id],
+      method: "id"
+    };
+  }
+
+  const matches = new Set();
+
+  diagnosticCandidateValues(pinkoiItem, id).forEach(value => {
+    const normalized = normalizeDiagnosticValue(value);
+    if (!normalized) return;
+    const ids = index.reverse.get(normalized);
+    if (!ids) return;
+    ids.forEach(masterId => matches.add(masterId));
+  });
+
+  const candidateIds = [...matches].sort();
+
+  if (candidateIds.length === 1) {
+    return {
+      status: "matched",
+      id: candidateIds[0],
+      candidateIds,
+      method: "name"
+    };
+  }
+
+  if (candidateIds.length > 1) {
+    return {
+      status: "ambiguous",
+      id: "",
+      candidateIds,
+      method: "name"
+    };
+  }
+
+  return {
+    status: "unmatched",
+    id: "",
+    candidateIds: [],
+    method: ""
+  };
+}
+
+function resolveDiagnosticSize(sizeValue, sizeIndex) {
+  const raw = diagText(sizeValue);
+  return resolveDiagnosticMaster({
+    pinkoiId: raw,
+    pinkoiItem: {
+      id: raw,
+      internalName: raw,
+      managementName: raw,
+      salesName: raw,
+      code: raw,
+      displayName: raw
+    },
+    index: sizeIndex
+  });
+}
+
+function diagnosticReasonForComponent(component, resolution) {
+  if (resolution.status === "matched") return "";
+  if (resolution.status === "ambiguous") return `ambiguous_${component}`;
+  return component;
+}
+
+function diagnosticProductLookup(products) {
+  const byIdMap = new Map();
+  const byPair = new Map();
+
+  (products || []).forEach(product => {
+    const id = diagText(product?.id);
+    if (id) byIdMap.set(id, product);
+
+    const bodyId = diagText(product?.bodyId);
+    const designId = diagText(product?.designId);
+    if (bodyId && designId) {
+      byPair.set(`${bodyId}__${designId}`, product);
+    }
+  });
+
+  return { byIdMap, byPair };
+}
+
+function diagnosticProductForInventory(row, lookup) {
+  const bodyId = diagText(row?.bodyId);
+  const designId = diagText(row?.designId);
+  const pairKey = bodyId && designId ? `${bodyId}__${designId}` : "";
+
+  return (
+    (pairKey ? lookup.byPair.get(pairKey) : null) ||
+    lookup.byIdMap.get(pairKey) ||
+    null
+  );
+}
+
+function diagnoseJapanesePrice(product, inventoryRow) {
+  const productPrice = Number(product?.priceJpy || 0);
+  const inventoryPrice = Number(inventoryRow?.priceJpy || 0);
+  const productHasPrice = Number.isFinite(productPrice) && productPrice > 0;
+  const inventoryHasPrice = Number.isFinite(inventoryPrice) && inventoryPrice > 0;
+
+  if (productHasPrice && inventoryHasPrice && productPrice !== inventoryPrice) {
+    return {
+      priceJpy: productPrice,
+      source: "conflict",
+      status: "price_conflict",
+      productPriceJpy: productPrice,
+      inventoryPriceJpy: inventoryPrice
+    };
+  }
+
+  if (productHasPrice) {
+    return {
+      priceJpy: productPrice,
+      source: "pinkoi_products",
+      status: "ok",
+      productPriceJpy: productPrice,
+      inventoryPriceJpy: inventoryHasPrice ? inventoryPrice : 0
+    };
+  }
+
+  if (inventoryHasPrice) {
+    return {
+      priceJpy: inventoryPrice,
+      source: "pinkoi_inventory",
+      status: "ok",
+      productPriceJpy: 0,
+      inventoryPriceJpy: inventoryPrice
+    };
+  }
+
+  return {
+    priceJpy: 0,
+    source: "missing",
+    status: "price_missing",
+    productPriceJpy: 0,
+    inventoryPriceJpy: 0
+  };
+}
+
+function diagnosticMasterStock(master, match) {
+  if (match.status !== "matched") return 0;
+
+  return Math.max(
+    0,
+    Number(
+      master?.inventory_v2
+        ?.[match.bodyId]
+        ?.[match.designId]
+        ?.[match.colorId]
+        ?.[match.sizeId]
+        ?.qty || 0
+    )
+  );
+}
+
+async function loadDiagnosticCollection(name) {
+  const collectionRef = firebaseApi.collection(
+    firebaseApi.db,
+    FIRESTORE_COLLECTIONS[name]
+  );
+  const getter = firebaseApi.getDocsFromServer || firebaseApi.getDocs;
+  const snapshot = await getter(collectionRef);
+  return snapshot.docs.map(docSnap => ({
+    id: docSnap.id,
+    ...docSnap.data()
+  }));
+}
+
+async function loadSalesManagerDiagnosticSources() {
+  const getMaster = firebaseApi.getDocFromServer || firebaseApi.getDoc;
+
+  const [
+    bodies,
+    designs,
+    colors,
+    inventory,
+    pinkoiProducts,
+    masterSnapshot
+  ] = await Promise.all([
+    loadDiagnosticCollection("bodies"),
+    loadDiagnosticCollection("designs"),
+    loadDiagnosticCollection("colors"),
+    loadDiagnosticCollection("inventory"),
+    loadDiagnosticCollection("pinkoiProducts"),
+    getMaster(firebaseApi.doc(firebaseApi.db, "tshirtStock", "master"))
+  ]);
+
+  if (!masterSnapshot.exists()) {
+    throw new Error("tshirtStock/master が見つかりません。");
+  }
+
+  return {
+    bodies,
+    designs,
+    colors,
+    inventory,
+    pinkoiProducts,
+    master: masterSnapshot.data()
+  };
+}
+
+function buildSalesManagerDiagnostic(sources) {
+  const {
+    bodies,
+    designs,
+    colors,
+    inventory,
+    pinkoiProducts,
+    master
+  } = sources;
+
+  const bodyById = new Map(bodies.map(item => [item.id, item]));
+  const designById = new Map(designs.map(item => [item.id, item]));
+  const colorById = new Map(colors.map(item => [item.id, item]));
+  const productLookup = diagnosticProductLookup(pinkoiProducts);
+
+  const masterBodies = master?.masters?.bodies || {};
+  const masterDesigns = master?.masters?.designs || {};
+  const masterColors = master?.masters?.colors || {};
+  const masterSizes = master?.masters?.sizes || {};
+
+  const bodyIndex = buildDiagnosticMasterIndex(masterBodies);
+  const designIndex = buildDiagnosticMasterIndex(masterDesigns);
+  const colorIndex = buildDiagnosticMasterIndex(masterColors);
+  const sizeIndex = buildDiagnosticMasterIndex(masterSizes);
+
+  const items = inventory.map(row => {
+    const pinkoiBody = bodyById.get(diagText(row.bodyId)) || null;
+    const pinkoiDesign = designById.get(diagText(row.designId)) || null;
+    const pinkoiColor = colorById.get(diagText(row.colorId)) || null;
+    const product = diagnosticProductForInventory(row, productLookup);
+
+    const bodyMatch = resolveDiagnosticMaster({
+      pinkoiId: row.bodyId,
+      pinkoiItem: pinkoiBody,
+      index: bodyIndex
+    });
+
+    const designMatch = resolveDiagnosticMaster({
+      pinkoiId: row.designId,
+      pinkoiItem: pinkoiDesign,
+      index: designIndex
+    });
+
+    const colorMatch = resolveDiagnosticMaster({
+      pinkoiId: row.colorId,
+      pinkoiItem: pinkoiColor,
+      index: colorIndex
+    });
+
+    const sizeMatch = resolveDiagnosticSize(row.size, sizeIndex);
+
+    const resolutions = {
+      body: bodyMatch,
+      design: designMatch,
+      color: colorMatch,
+      size: sizeMatch
+    };
+
+    const reasons = Object.entries(resolutions)
+      .map(([component, resolution]) =>
+        diagnosticReasonForComponent(component, resolution)
+      )
+      .filter(Boolean);
+
+    const hasUnmatched = Object.values(resolutions).some(
+      resolution => resolution.status === "unmatched"
+    );
+    const hasAmbiguous = Object.values(resolutions).some(
+      resolution => resolution.status === "ambiguous"
+    );
+
+    const matchStatus = reasons.length === 0
+      ? "matched"
+      : hasUnmatched
+        ? "unmatched"
+        : hasAmbiguous
+          ? "ambiguous"
+          : "unmatched";
+
+    const masterMatch = {
+      bodyId: bodyMatch.id || "",
+      designId: designMatch.id || "",
+      colorId: colorMatch.id || "",
+      sizeId: sizeMatch.id || "",
+      status: matchStatus,
+      reasons,
+      components: resolutions
+    };
+
+    const masterStock = diagnosticMasterStock(master, masterMatch);
+    const pinkoiSyncedStock = Math.max(0, Number(row.stock || 0));
+    const pinkoiStock = Math.max(0, Number(row.pinkoiStock || 0));
+
+    const stockDiagnosis = {
+      masterMatchesPinkoiStockCopy:
+        matchStatus === "matched" && pinkoiSyncedStock === masterStock,
+      stockDiff:
+        matchStatus === "matched" && pinkoiSyncedStock !== masterStock,
+      pinkoiStockDiff:
+        matchStatus === "matched" && pinkoiStock !== masterStock,
+      masterZero:
+        matchStatus === "matched" && masterStock === 0
+    };
+
+    const price = diagnoseJapanesePrice(product, row);
+
+    const masterBody = masterMatch.bodyId
+      ? bodyIndex.masterMap[masterMatch.bodyId]
+      : null;
+    const masterDesign = masterMatch.designId
+      ? designIndex.masterMap[masterMatch.designId]
+      : null;
+    const masterColor = masterMatch.colorId
+      ? colorIndex.masterMap[masterMatch.colorId]
+      : null;
+    const masterSize = masterMatch.sizeId
+      ? sizeIndex.masterMap[masterMatch.sizeId]
+      : null;
+
+    return {
+      inventoryId: diagText(row.id),
+      sku: diagText(row.sku),
+      pinkoi: {
+        bodyId: diagText(row.bodyId),
+        designId: diagText(row.designId),
+        colorId: diagText(row.colorId),
+        size: diagText(row.size),
+        stock: pinkoiSyncedStock,
+        pinkoiStock,
+        priceJpy: Number(row.priceJpy || 0),
+        pinkoiProductId: diagText(row.pinkoiProductId)
+      },
+      names: {
+        body: diagnosticDisplayName(pinkoiBody, row.bodyId),
+        design: diagnosticDisplayName(pinkoiDesign, row.designId),
+        color: diagnosticDisplayName(pinkoiColor, row.colorId)
+      },
+      pinkoiMasters: {
+        body: pinkoiBody ? {
+          id: pinkoiBody.id,
+          internalName: diagText(pinkoiBody.internalName),
+          code: diagText(pinkoiBody.code),
+          displayName: diagnosticDisplayNameField(pinkoiBody)
+        } : null,
+        design: pinkoiDesign ? {
+          id: pinkoiDesign.id,
+          internalName: diagText(pinkoiDesign.internalName),
+          code: diagText(pinkoiDesign.code),
+          displayName: diagnosticDisplayNameField(pinkoiDesign)
+        } : null,
+        color: pinkoiColor ? {
+          id: pinkoiColor.id,
+          internalName: diagText(pinkoiColor.internalName),
+          code: diagText(pinkoiColor.code),
+          displayName: diagnosticDisplayNameField(pinkoiColor)
+        } : null
+      },
+      product: {
+        documentId: diagText(product?.id),
+        pinkoiProductId: diagText(
+          product?.pinkoiProductId || row?.pinkoiProductId
+        ),
+        status: diagText(product?.status),
+        priceJpy: Number(product?.priceJpy || 0)
+      },
+      masterMatch,
+      masterNames: {
+        body: diagnosticDisplayName(masterBody, masterMatch.bodyId),
+        design: diagnosticDisplayName(masterDesign, masterMatch.designId),
+        color: diagnosticDisplayName(masterColor, masterMatch.colorId),
+        size: diagnosticDisplayName(masterSize, masterMatch.sizeId)
+      },
+      masterStock,
+      stockDiagnosis,
+      price,
+      duplicateSku: false,
+      duplicateSkuDifferentVariant: false,
+      duplicateSkuCount: 0
+    };
+  });
+
+  const skuGroups = new Map();
+
+  items.forEach(item => {
+    const skuKey = diagText(item.sku).toLocaleUpperCase("en-US");
+    if (!skuKey) return;
+    if (!skuGroups.has(skuKey)) skuGroups.set(skuKey, []);
+    skuGroups.get(skuKey).push(item);
+  });
+
+  let duplicateSkuCount = 0;
+
+  skuGroups.forEach(group => {
+    if (group.length <= 1) return;
+    duplicateSkuCount++;
+
+    const tuples = new Set(
+      group.map(item => [
+        item.pinkoi.bodyId,
+        item.pinkoi.designId,
+        item.pinkoi.colorId,
+        item.pinkoi.size
+      ].join("|"))
+    );
+
+    group.forEach(item => {
+      item.duplicateSku = true;
+      item.duplicateSkuDifferentVariant = tuples.size > 1;
+      item.duplicateSkuCount = group.length;
+    });
+  });
+
+  const componentReasonCount = component =>
+    items.filter(item =>
+      item.masterMatch.reasons.some(reason =>
+        reason === component || reason === `ambiguous_${component}`
+      )
+    ).length;
+
+  const multipleReasonCount = items.filter(item => {
+    const components = new Set(
+      item.masterMatch.reasons.map(reason =>
+        reason.replace(/^ambiguous_/, "")
+      )
+    );
+    return components.size > 1;
+  }).length;
+
+  const matchedItems = items.filter(
+    item => item.masterMatch.status === "matched"
+  );
+
+  const summary = {
+    inventoryCount: items.length,
+    skuCount: items.filter(item => Boolean(item.sku)).length,
+    missingSkuCount: items.filter(item => !item.sku).length,
+    duplicateSkuCount,
+    duplicateSkuItemCount: items.filter(item => item.duplicateSku).length,
+    matchedCount: matchedItems.length,
+    unmatchedCount: items.filter(
+      item => item.masterMatch.status !== "matched"
+    ).length,
+    ambiguousCount: items.filter(
+      item => item.masterMatch.status === "ambiguous"
+    ).length,
+    priceCount: items.filter(
+      item => item.price.status !== "price_missing"
+    ).length,
+    missingPriceCount: items.filter(
+      item => item.price.status === "price_missing"
+    ).length,
+    priceConflictCount: items.filter(
+      item => item.price.status === "price_conflict"
+    ).length,
+    currentStockCount: matchedItems.filter(
+      item => item.masterStock > 0
+    ).length,
+    zeroStockCount: matchedItems.filter(
+      item => item.masterStock === 0
+    ).length,
+    reasonCounts: {
+      body: componentReasonCount("body"),
+      design: componentReasonCount("design"),
+      color: componentReasonCount("color"),
+      size: componentReasonCount("size"),
+      multiple: multipleReasonCount
+    }
+  };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary,
+    items
+  };
+}
+
+function diagnosticPriceText(item) {
+  if (item.price.status === "price_missing") return "未設定";
+  if (item.price.status === "price_conflict") {
+    return `競合 ¥${item.price.productPriceJpy.toLocaleString("ja-JP")} / ¥${item.price.inventoryPriceJpy.toLocaleString("ja-JP")}`;
+  }
+  return `¥${Number(item.price.priceJpy || 0).toLocaleString("ja-JP")}`;
+}
+
+function diagnosticReasonText(item) {
+  if (item.masterMatch.status === "matched") return "対応済み";
+  return item.masterMatch.reasons
+    .map(reason => SALES_DIAGNOSTIC_REASON_LABELS[reason] || reason)
+    .join(" / ");
+}
+
+function diagnosticItemMatchesFilter(item, filter) {
+  switch (filter) {
+    case "unmatched":
+      return item.masterMatch.status !== "matched";
+    case "price_missing":
+      return item.price.status === "price_missing";
+    case "price_conflict":
+      return item.price.status === "price_conflict";
+    case "sku_missing":
+      return !item.sku;
+    case "sku_duplicate":
+      return item.duplicateSku;
+    case "stock_diff":
+      return item.masterMatch.status === "matched" &&
+        (item.stockDiagnosis.stockDiff || item.stockDiagnosis.pinkoiStockDiff);
+    case "master_zero":
+      return item.stockDiagnosis.masterZero;
+    default:
+      return true;
+  }
+}
+
+function filteredSalesDiagnosticItems() {
+  if (!salesManagerDiagnosticResult) return [];
+
+  const filter = $("#salesDiagnosticFilter")?.value || "all";
+  const query = normalizeDiagnosticValue(
+    $("#salesDiagnosticSearch")?.value || ""
+  );
+
+  return salesManagerDiagnosticResult.items.filter(item => {
+    if (!diagnosticItemMatchesFilter(item, filter)) return false;
+    if (!query) return true;
+
+    const haystack = [
+      item.sku,
+      item.names.body,
+      item.names.design,
+      item.names.color,
+      item.pinkoi.bodyId,
+      item.pinkoi.designId,
+      item.pinkoi.colorId
+    ]
+      .map(normalizeDiagnosticValue)
+      .join("|");
+
+    return haystack.includes(query);
+  });
+}
+
+function diagnosticSummaryCard(label, value) {
+  return `
+    <div class="sales-diagnostic-card">
+      <span>${esc(label)}</span>
+      <strong>${Number(value || 0).toLocaleString("ja-JP")}</strong>
+    </div>
+  `;
+}
+
+function renderSalesDiagnosticItems() {
+  const container = $("#salesDiagnosticItems");
+  const count = $("#salesDiagnosticVisibleCount");
+  if (!container || !count) return;
+
+  if (!salesManagerDiagnosticResult) {
+    count.textContent = "0";
+    container.innerHTML = "";
+    return;
+  }
+
+  const items = filteredSalesDiagnosticItems();
+  count.textContent = String(items.length);
+
+  if (!items.length) {
+    container.innerHTML = `
+      <div class="sales-diagnostic-empty">
+        条件に一致するSKUはありません。
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = items.map(item => {
+    const statusClass =
+      item.masterMatch.status === "matched"
+        ? "ok"
+        : item.masterMatch.status === "ambiguous"
+          ? "warn"
+          : "error";
+
+    const stockFlags = [];
+    if (item.stockDiagnosis.stockDiff) {
+      stockFlags.push("Pinkoi実在庫コピー差異");
+    }
+    if (item.stockDiagnosis.pinkoiStockDiff) {
+      stockFlags.push("PinkoiStock差異");
+    }
+    if (item.stockDiagnosis.masterZero) {
+      stockFlags.push("master在庫0");
+    }
+    if (
+      item.masterMatch.status === "matched" &&
+      !item.stockDiagnosis.stockDiff &&
+      !item.stockDiagnosis.pinkoiStockDiff
+    ) {
+      stockFlags.push("masterと一致");
+    }
+
+    const duplicateText = item.duplicateSku
+      ? item.duplicateSkuDifferentVariant
+        ? `重複SKU ${item.duplicateSkuCount}件 / 異なる組み合わせ`
+        : `重複SKU ${item.duplicateSkuCount}件`
+      : "";
+
+    return `
+      <article class="sales-diagnostic-item">
+        <div class="sales-diagnostic-item-head">
+          <div>
+            <strong>${esc(item.sku || "SKUなし")}</strong>
+            <div class="muted">
+              ${esc(item.names.body || "?")} /
+              ${esc(item.names.design || "?")} /
+              ${esc(item.names.color || "?")} /
+              ${esc(item.pinkoi.size || "?")}
+            </div>
+          </div>
+          <span class="sales-diagnostic-status ${statusClass}">
+            ${esc(
+              item.masterMatch.status === "matched"
+                ? "対応済み"
+                : item.masterMatch.status === "ambiguous"
+                  ? "候補複数"
+                  : "未対応"
+            )}
+          </span>
+        </div>
+
+        <div class="sales-diagnostic-row">
+          <span>日本価格</span>
+          <strong>${esc(diagnosticPriceText(item))}</strong>
+        </div>
+        <div class="sales-diagnostic-row">
+          <span>master在庫</span>
+          <strong>${item.masterMatch.status === "matched" ? item.masterStock : "—"}</strong>
+        </div>
+        <div class="sales-diagnostic-row">
+          <span>Pinkoi stock / PinkoiStock</span>
+          <strong>${item.pinkoi.stock} / ${item.pinkoi.pinkoiStock}</strong>
+        </div>
+        <div class="sales-diagnostic-row">
+          <span>未対応理由</span>
+          <strong>${esc(diagnosticReasonText(item))}</strong>
+        </div>
+
+        ${
+          duplicateText
+            ? `<div class="sales-diagnostic-warning">${esc(duplicateText)}</div>`
+            : ""
+        }
+
+        ${
+          stockFlags.length
+            ? `<div class="sales-diagnostic-flags">${stockFlags.map(flag =>
+                `<span>${esc(flag)}</span>`
+              ).join("")}</div>`
+            : ""
+        }
+
+        <details class="sales-diagnostic-item-details">
+          <summary>詳細</summary>
+          <div class="sales-diagnostic-meta">
+            <div><span>Inventory ID</span><code>${esc(item.inventoryId)}</code></div>
+            <div><span>Pinkoi bodyId</span><code>${esc(item.pinkoi.bodyId)}</code></div>
+            <div><span>Body internalName</span><code>${esc(item.pinkoiMasters.body?.internalName || "—")}</code></div>
+            <div><span>Body code</span><code>${esc(item.pinkoiMasters.body?.code || "—")}</code></div>
+            <div><span>Body displayName</span><code>${esc(item.pinkoiMasters.body?.displayName || "—")}</code></div>
+            <div><span>Pinkoi designId</span><code>${esc(item.pinkoi.designId)}</code></div>
+            <div><span>Design internalName</span><code>${esc(item.pinkoiMasters.design?.internalName || "—")}</code></div>
+            <div><span>Design code</span><code>${esc(item.pinkoiMasters.design?.code || "—")}</code></div>
+            <div><span>Design displayName</span><code>${esc(item.pinkoiMasters.design?.displayName || "—")}</code></div>
+            <div><span>Pinkoi colorId</span><code>${esc(item.pinkoi.colorId)}</code></div>
+            <div><span>Color internalName</span><code>${esc(item.pinkoiMasters.color?.internalName || "—")}</code></div>
+            <div><span>Color code</span><code>${esc(item.pinkoiMasters.color?.code || "—")}</code></div>
+            <div><span>Color displayName</span><code>${esc(item.pinkoiMasters.color?.displayName || "—")}</code></div>
+            <div><span>master bodyId</span><code>${esc(item.masterMatch.bodyId || "—")}</code></div>
+            <div><span>master designId</span><code>${esc(item.masterMatch.designId || "—")}</code></div>
+            <div><span>master colorId</span><code>${esc(item.masterMatch.colorId || "—")}</code></div>
+            <div><span>master sizeId</span><code>${esc(item.masterMatch.sizeId || "—")}</code></div>
+            <div><span>Pinkoi商品ID</span><code>${esc(item.product.pinkoiProductId || "—")}</code></div>
+            <div><span>商品status</span><code>${esc(item.product.status || "—")}</code></div>
+            <div><span>商品価格</span><code>${Number(item.product.priceJpy || 0) > 0 ? `¥${Number(item.product.priceJpy).toLocaleString("ja-JP")}` : "—"}</code></div>
+            <div><span>価格取得元</span><code>${esc(item.price.source)}</code></div>
+          </div>
+        </details>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderSalesManagerDiagnostics() {
+  const summaryBox = $("#salesDiagnosticSummary");
+  const reasonBox = $("#salesDiagnosticReasonSummary");
+  const details = $("#salesDiagnosticDetails");
+  const exportBtn = $("#salesDiagnosticExportBtn");
+
+  if (!summaryBox || !reasonBox || !details || !exportBtn) return;
+
+  if (!salesManagerDiagnosticResult) {
+    summaryBox.classList.add("hidden");
+    reasonBox.classList.add("hidden");
+    details.classList.add("hidden");
+    exportBtn.disabled = true;
+    renderSalesDiagnosticItems();
+    return;
+  }
+
+  const summary = salesManagerDiagnosticResult.summary;
+
+  summaryBox.classList.remove("hidden");
+  reasonBox.classList.remove("hidden");
+  details.classList.remove("hidden");
+  exportBtn.disabled = false;
+
+  summaryBox.innerHTML = [
+    diagnosticSummaryCard("Pinkoi Inventory 総数", summary.inventoryCount),
+    diagnosticSummaryCard("SKUあり", summary.skuCount),
+    diagnosticSummaryCard("SKUなし", summary.missingSkuCount),
+    diagnosticSummaryCard("日本価格あり", summary.priceCount),
+    diagnosticSummaryCard("日本価格なし", summary.missingPriceCount),
+    diagnosticSummaryCard("masterに対応", summary.matchedCount),
+    diagnosticSummaryCard("masterに未対応", summary.unmatchedCount),
+    diagnosticSummaryCard("現在在庫あり", summary.currentStockCount),
+    diagnosticSummaryCard("現在在庫0", summary.zeroStockCount),
+    diagnosticSummaryCard("重複SKU", summary.duplicateSkuCount),
+    diagnosticSummaryCard("価格不一致", summary.priceConflictCount)
+  ].join("");
+
+  reasonBox.innerHTML = `
+    <div class="sales-diagnostic-reason-title">未対応理由</div>
+    <div class="sales-diagnostic-reasons">
+      ${diagnosticSummaryCard("Body未対応", summary.reasonCounts.body)}
+      ${diagnosticSummaryCard("Design未対応", summary.reasonCounts.design)}
+      ${diagnosticSummaryCard("Color未対応", summary.reasonCounts.color)}
+      ${diagnosticSummaryCard("Size未対応", summary.reasonCounts.size)}
+      ${diagnosticSummaryCard("複数項目未対応", summary.reasonCounts.multiple)}
+    </div>
+  `;
+
+  const generatedAt = new Date(salesManagerDiagnosticResult.generatedAt);
+  $("#salesDiagnosticStatus").textContent =
+    `診断済み ${generatedAt.toLocaleString("ja-JP")} / 読み取り専用`;
+
+  renderSalesDiagnosticItems();
+}
+
+async function runSalesManagerDiagnostic() {
+  const button = $("#salesDiagnosticRunBtn");
+  const status = $("#salesDiagnosticStatus");
+
+  if (APP_CONFIG.demoMode || !firebaseApi || !state.user) {
+    status.textContent = "Google Login後に診断を実行してください。";
+    return;
+  }
+
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "診断中…";
+  status.textContent =
+    "FirestoreからPinkoiデータと tshirtStock/master を読み込んでいます。";
+
+  try {
+    const sources = await loadSalesManagerDiagnosticSources();
+    salesManagerDiagnosticResult = buildSalesManagerDiagnostic(sources);
+    renderSalesManagerDiagnostics();
+    showToast("Sales Manager連携診断が完了しました");
+  } catch (error) {
+    console.error("Sales Manager diagnostic failed", error);
+    salesManagerDiagnosticResult = null;
+    renderSalesManagerDiagnostics();
+    status.textContent =
+      `診断エラー: ${error?.message || String(error)}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function salesManagerDiagnosticExportPayload() {
+  if (!salesManagerDiagnosticResult) return null;
+
+  const { generatedAt, summary, items } = salesManagerDiagnosticResult;
+
+  return {
+    generatedAt,
+    summary,
+    items: items.map(item => ({
+      inventoryId: item.inventoryId,
+      sku: item.sku,
+      pinkoi: item.pinkoi,
+      names: item.names,
+      pinkoiMasters: item.pinkoiMasters,
+      product: item.product,
+      masterMatch: item.masterMatch,
+      masterNames: item.masterNames,
+      masterStock: item.masterStock,
+      stockDiagnosis: item.stockDiagnosis,
+      price: item.price,
+      skuDiagnosis: {
+        missing: !item.sku,
+        duplicate: item.duplicateSku,
+        duplicateDifferentVariant: item.duplicateSkuDifferentVariant,
+        duplicateCount: item.duplicateSkuCount
+      }
+    }))
+  };
+}
+
+function exportSalesManagerDiagnosticJson() {
+  const payload = salesManagerDiagnosticExportPayload();
+  if (!payload) {
+    showToast("先に診断を実行してください");
+    return;
+  }
+
+  const blob = new Blob(
+    [JSON.stringify(payload, null, 2)],
+    { type: "application/json;charset=utf-8" }
+  );
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\..+$/, "")
+    .replace("T", "_");
+
+  link.href = url;
+  link.download = `icelolly_sales_manager_diagnostic_${stamp}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function render() {
   renderSummary();
   renderFilters();
@@ -2059,6 +2278,7 @@ function render() {
   renderMasters();
   renderPinkoi();
   renderLegacyStockDiagnostics();
+  renderSalesManagerDiagnostics();
 }
 
 function renderSummary() {
@@ -2292,7 +2512,7 @@ async function clearInventoryDeletionBlock(bodyId, designId, colorId) {
   if (disabledBodies.has(bodyName)) {
     disabledBodies.delete(bodyName);
 
-    (BODY_COLOR_RULES[bodyName] || []).forEach(name => {
+    Object.keys(LEGACY_TSHIRT_COLOR_MAP[bodyName] || {}).forEach(name => {
       disabledKeys.add(`${bodyName}__${name}`);
     });
 
@@ -4396,6 +4616,11 @@ function bindEvents() {
   $("#loginBtn").addEventListener("click", login);
   $("#logoutBtn").addEventListener("click", logout);
   $("#loadDefaultsBtn")?.addEventListener("click", loadIcelollyDefaults);
+
+  $("#salesDiagnosticRunBtn")?.addEventListener("click", runSalesManagerDiagnostic);
+  $("#salesDiagnosticExportBtn")?.addEventListener("click", exportSalesManagerDiagnosticJson);
+  $("#salesDiagnosticFilter")?.addEventListener("change", renderSalesDiagnosticItems);
+  $("#salesDiagnosticSearch")?.addEventListener("input", renderSalesDiagnosticItems);
 
   document.addEventListener("change", async e => {
     const inventoryCheckbox = e.target.closest("[data-select-inventory-product]");
